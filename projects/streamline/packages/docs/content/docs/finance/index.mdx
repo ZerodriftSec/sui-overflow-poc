@@ -1,0 +1,33 @@
+---
+title: Overview
+description: Income that works the moment it is earned — yield, credit, and payroll on the same rail.
+icon: Building2
+---
+
+# Finance
+
+Streaming payment is only half the story. The instant value is locked in a Move object, it can **compound**, **back a loan**, or **run as continuous payroll** — without leaving Sui or waiting for a bank batch.
+
+StreamLine treats money as programmable cash flow:
+
+| Capability | What it does |
+| --- | --- |
+| [Yield](/docs/finance/yield) | Route a slice of every drip into a vault that compounds as it arrives |
+| [Borrowing](/docs/finance/borrowing) | Borrow against a live stream’s present value — cash today, income tomorrow |
+| [Payroll](/docs/finance/payroll) | Run teams and contractors on continuous, milestone-aware streams |
+
+Public streams plug into DeFi by design. Confidential streams prioritize discretion (see [Privacy](/docs/privacy)); clear streams prioritize composability. Choose per engagement.
+
+## Why this is different from a card
+
+A card authorization cannot become collateral mid-flight. An ACH credit cannot atomically split into “70% spend / 30% yield.” StreamLine settles in **Programmable Transaction Blocks**: pay, split, and deposit in one all-or-nothing transaction — the Move type system is the escrow.
+
+## Status on testnet
+
+Yield vault and lending pool ship as **Scallop-shaped stand-ins** (interface-compatible). The call sites are built to map 1:1 onto mainnet Scallop / NAVI markets when you promote the deployment — not a redesign, a destination swap.
+
+<Cards>
+  <Card title="Yield" href="/docs/finance/yield" description="Auto-yield drips · vault deposit / redeem" />
+  <Card title="Borrowing" href="/docs/finance/borrowing" description="Stream PV · loans · repay" />
+  <Card title="Payroll" href="/docs/finance/payroll" description="Pro workspace · continuous pay" />
+</Cards>

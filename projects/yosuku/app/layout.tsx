@@ -1,0 +1,86 @@
+import type { Metadata } from "next";
+import { Sora, Inter, JetBrains_Mono, Noto_Serif_JP } from "next/font/google";
+import "./globals.css";
+import WalletProvider from "@/components/WalletProvider";
+import { ToastProvider } from "@/components/Toast";
+import { Analytics } from "@vercel/analytics/next";
+import { THEME_INIT_SCRIPT } from "@/lib/theme";
+
+const sora = Sora({
+  variable: "--font-sora",
+  subsets: ["latin"],
+  display: 'swap',
+  weight: ['400', '600', '700', '800'],
+});
+
+const inter = Inter({
+  variable: "--font-inter",
+  subsets: ["latin"],
+  display: 'swap',
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  variable: "--font-jetbrains",
+  subsets: ["latin"],
+  display: 'swap',
+  weight: ['400', '500', '600'],
+});
+
+const notoSerifJP = Noto_Serif_JP({
+  variable: "--font-noto-serif-jp",
+  subsets: ["latin"],
+  display: 'swap',
+  weight: ['500', '700'],
+});
+
+export const metadata: Metadata = {
+  metadataBase: new URL('https://yosuku.xyz'),
+  title: "Yosuku — Prediction Markets on Sui",
+  description: "Trade binary positions on BTC price direction. Oracle-based settlement, DUSDC stablecoins, 1-minute to hourly rounds.",
+  openGraph: {
+    title: "Yosuku — Prediction Markets on Sui",
+    description: "Trade binary positions on BTC price direction. Oracle-based settlement, DUSDC stablecoins, 1-minute to hourly rounds.",
+    siteName: "Yosuku",
+    locale: "en_US",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Yosuku — Prediction Markets on Sui",
+    description: "Trade binary positions on BTC price direction. Oracle-based settlement, DUSDC stablecoins, 1-minute to hourly rounds.",
+  },
+  manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'Yosuku',
+  },
+  other: {
+    'mobile-web-app-capable': 'yes',
+  },
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html lang="en" suppressHydrationWarning>
+      <body
+        className={`${sora.variable} ${inter.variable} ${jetbrainsMono.variable} ${notoSerifJP.variable} antialiased cursor-custom`}
+        suppressHydrationWarning
+      >
+        {/* Paint the resolved theme on the FIRST frame (no flash of dark). Runs
+            synchronously before the app renders; mirrors lib/theme resolveTheme. */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+        <WalletProvider>
+          <ToastProvider>
+            {children}
+          </ToastProvider>
+        </WalletProvider>
+        <Analytics />
+      </body>
+    </html>
+  );
+}

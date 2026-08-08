@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-22T11:00:00Z",
+  "title": "Design System: PayStreamer",
+  "extensions": {
+    "colorMeta": {
+      "bg-primary": { "role": "neutral", "displayName": "Obsidian Core", "canonical": "#0a0a0f" },
+      "bg-secondary": { "role": "neutral", "displayName": "Deep Velvet", "canonical": "#12121a" },
+      "accent-primary": { "role": "primary", "displayName": "Electric Violet", "canonical": "#6c63ff" },
+      "accent-secondary": { "role": "secondary", "displayName": "Sui Cyan-Blue", "canonical": "#3b82f6" },
+      "accent-success": { "role": "utility", "displayName": "Emerald Settlement", "canonical": "#10b981" },
+      "accent-warning": { "role": "utility", "displayName": "Amber Caution", "canonical": "#f59e0b" },
+      "text-primary": { "role": "neutral", "displayName": "Pure White", "canonical": "#ffffff" },
+      "text-secondary": { "role": "neutral", "displayName": "Slate Text", "canonical": "#94a3b8" }
+    }
+  },
+  "components": [
+    {
+      "name": "Gradient Button",
+      "kind": "button",
+      "refersTo": "button-gradient",
+      "description": "Primary action button with Electric Violet to Sui Blue gradient.",
+      "html": "<button class=\"ds-btn-gradient\">Launch App</button>",
+      "css": ".ds-btn-gradient { background: linear-gradient(135deg, #6c63ff 0%, #3b82f6 100%); color: #fff; padding: 12px 24px; border-radius: 8px; font-weight: 600; border: none; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; } .ds-btn-gradient:hover { transform: translateY(-2px); box-shadow: 0 0 20px rgba(108, 99, 255, 0.4); }"
+    },
+    {
+      "name": "Glass Card",
+      "kind": "card",
+      "refersTo": "card-glass",
+      "description": "Translucent elevated surface card with blur and subtle highlight.",
+      "html": "<div class=\"ds-glass-card\"><h3>Subscription Active</h3><p>Monthly automated billing active on Sui network.</p></div>",
+      "css": ".ds-glass-card { background: rgba(18, 18, 26, 0.8); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 16px; padding: 24px; color: #fff; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Neon Treasury",
+    "overview": "PayStreamer combines high-performance Web3 architecture with sleek, high-contrast dark visual aesthetics.",
+    "keyCharacteristics": [
+      "High-contrast dark backgrounds with neon violet and blue gradients",
+      "Translucent glassmorphism for cards and elevated panels",
+      "JetBrains Mono typography for code snippets and balances"
+    ],
+    "rules": [
+      { "name": "The Gradient Voice Rule", "body": "Primary headlines and brand highlights use a 135deg gradient from Electric Violet (#6c63ff) to Sui Cyan-Blue (#3b82f6).", "section": "colors" }
+    ],
+    "dos": [
+      "Do use semantic CSS variables rather than hardcoded hex values",
+      "Do use JetBrains Mono for code snippets and balances"
+    ],
+    "donts": [
+      "Don't use solid white backgrounds for cards in dark mode",
+      "Don't use generic blue/red alert colors outside the defined palette"
+    ]
+  }
+}

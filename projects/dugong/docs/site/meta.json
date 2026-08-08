@@ -1,0 +1,10 @@
+{
+  "title": "Dugong Documentation",
+  "pages": [
+    "index",
+    "getting-started",
+    "using-dugong",
+    "tweet-commands",
+    "how-it-works"
+  ]
+}

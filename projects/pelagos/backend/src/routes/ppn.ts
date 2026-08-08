@@ -1,0 +1,603 @@
+import { Router, Request, Response } from 'express';
+import {
+  createPPNVault,
+  createTransaction,
+  getActivePPNVault,
+  getBundleById,
+  getLegsByBundleId,
+  getPPNVaultById,
+  getPPNVaultsByWallet,
+  getTransactionBySignature,
+  updatePPNVaultOnchain,
+} from '../db/queries';
+import {
+  prepareDeposit,
+  prepareRedeem,
+  confirmDigest,
+  readVaultState,
+  listShares,
+  vaultConfigured,
+} from '../services/vault';
+import { resolveVault } from '../services/vault/config';
+import { quoteTranches, basketSigmaFromLegs } from '../services/tranching';
+import { getLiveNAV } from '../services/pricing';
+import { allocateNote } from '../services/ppn-allocator';
+import { recordPPNMaturity, getPPNMaturity } from '../services/ppn-maturity-store';
+
+const router = Router();
+
+/**
+ * Capital deployment plan for a protected note: floor sleeve (protected vault)
+ * + the risk sleeve split across basket / tranche / distribution by profile.
+ */
+router.post('/allocate', (req: Request, res: Response) => {
+  try {
+    const b = req.body as {
+      profile?: string;
+      amount_usdc?: number;
+      apy?: number;
+      days?: number;
+      basket_label?: string;
+      distribution_label?: string;
+      baskets?: string[];
+      distributions?: string[];
+    };
+    res.json(
+      allocateNote({
+        profile: String(b.profile ?? 'Income'),
+        amountUsdc: Number(b.amount_usdc ?? 0),
+        apy: Number(b.apy ?? 0),
+        days: Number(b.days ?? 30),
+        basketLabel: b.basket_label,
+        distributionLabel: b.distribution_label,
+        baskets: Array.isArray(b.baskets) ? b.baskets.filter(Boolean) : undefined,
+        distributions: Array.isArray(b.distributions) ? b.distributions.filter(Boolean) : undefined,
+      }),
+    );
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
+type TrancheKind = 'senior' | 'mezzanine' | 'junior';
+
+function maturityDate(days = 30): { iso: string; ts: number } {
+  const ts = Date.now() + days * 86_400_000;
+  return { iso: new Date(ts).toISOString(), ts: Math.floor(ts / 1000) };
+}
+
+function ppnLabel(bundleId: string, kind?: string): string {
+  return `ppn:${kind ?? 'note'}:${bundleId}`;
+}
+
+function statusForError(message: string): number {
+  if (/insufficient/i.test(message)) return 400;
+  if (/no vault positions|not found/i.test(message)) return 404;
+  return 500;
+}
+
+function ownerMismatch(event: Record<string, unknown> | undefined, wallet?: string): boolean {
+  const owner = (event?.owner as string | undefined)?.toLowerCase();
+  return Boolean(owner && wallet && owner !== wallet.toLowerCase());
+}
+
+function notConfigured(res: Response) {
+  return res.status(503).json({ error: 'On-chain vault not configured.' });
+}
+
+/** Open a protected-note position = a real vault deposit, tagged with the
+ *  tranche/bundle as the share label. Returns signable tx bytes. */
+router.post('/onchain/prepare', async (req: Request, res: Response) => {
+  try {
+    const {
+      bundle_id,
+      wallet_address,
+      amount_usdc,
+      maturity_days,
+      tranche_kind,
+      tranche_attach,
+      tranche_detach,
+      price_per_token,
+      currency,
+    } = req.body as {
+      bundle_id: string;
+      wallet_address: string;
+      amount_usdc: number;
+      maturity_days?: number;
+      tranche_kind?: TrancheKind;
+      tranche_attach?: number;
+      tranche_detach?: number;
+      price_per_token?: number;
+      currency?: 'mUSDC' | 'dUSDC';
+    };
+    const ccy: 'mUSDC' | 'dUSDC' = currency === 'dUSDC' ? 'dUSDC' : 'mUSDC';
+    if (!vaultConfigured(ccy)) return notConfigured(res);
+    if (!bundle_id || !wallet_address || !amount_usdc || amount_usdc <= 0) {
+      return res
+        .status(400)
+        .json({ error: 'bundle_id, wallet_address, and positive amount_usdc are required' });
+    }
+
+    const maturity = maturityDate(maturity_days ?? 30);
+    // Record maturity DURABLY in our backend-controlled file store BEFORE the
+    // Supabase write — Supabase silently no-ops under anon-key RLS, so it cannot
+    // be the source of truth for the redeem maturity lock (audit B4/B5). This
+    // store is read first by the redeem gate and survives Akash restarts, so a
+    // note opened here is always gateable at redeem time. Best-effort, but the
+    // store's own persist() never throws.
+    await recordPPNMaturity({
+      wallet_address,
+      bundle_id,
+      tranche_kind,
+      maturity_ts: maturity.ts,
+    }).catch(() => {
+      /* store write best-effort; in-memory remains authoritative this session */
+    });
+    const prep = await prepareDeposit({
+      owner: wallet_address,
+      amount_usdc,
+      label: ppnLabel(bundle_id, tranche_kind),
+      currency: ccy,
+    });
+
+    // Best-effort DB record (no-op when Supabase is unconfigured).
+    let vaultId: string | null = null;
+    try {
+      const vault = await createPPNVault({
+        bundle_id,
+        wallet_address,
+        principal_usdc: amount_usdc,
+        yield_deployed_usdc: 0,
+        estimated_apy: 8,
+        vault_address: prep.vault_id,
+        status: 'active',
+        maturity_date: maturity.iso,
+        maturity_ts: maturity.ts,
+        note_seed_hex: undefined,
+        onchain_tx_signature: null,
+        redemption_tx_signature: null,
+        tranche_kind: tranche_kind ?? null,
+        tranche_attach: tranche_attach ?? null,
+        tranche_detach: tranche_detach ?? null,
+        price_per_token: price_per_token ?? null,
+      });
+      vaultId = vault?.id ?? null;
+    } catch {
+      /* DB optional */
+    }
+
+    res.json({
+      kind: 'prepared',
+      vault_id: vaultId,
+      bundle_id,
+      wallet_address,
+      amount_usdc,
+      fee_usdc: prep.economics.fee_usdc,
+      net_deposit_usdc: prep.economics.net_usdc,
+      deposit_fee_bps: prep.economics.deposit_fee_bps,
+      expected_shares: prep.economics.expected_shares,
+      share_price: prep.economics.share_price,
+      tranche_kind: tranche_kind ?? null,
+      maturity_date: maturity.iso,
+      maturity_ts: maturity.ts,
+      sui_market_id: prep.vault_id,
+      sui_position_id: prep.vault_id,
+      tx_bytes: prep.tx_bytes,
+      sender: prep.sender,
+      dry_run: prep.dry_run,
+    });
+  } catch (err) {
+    const msg = String((err as Error).message ?? err);
+    console.error('POST /api/ppn/onchain/prepare error:', msg);
+    res.status(statusForError(msg)).json({ error: msg });
+  }
+});
+
+router.post('/onchain/confirm', async (req: Request, res: Response) => {
+  try {
+    const { vault_id, wallet_address, signature, bundle_id, amount_usdc } = req.body as {
+      vault_id?: string;
+      wallet_address?: string;
+      signature: string;
+      bundle_id?: string;
+      amount_usdc?: number;
+    };
+    if (!signature) return res.status(400).json({ error: 'signature (tx digest) required' });
+    const c = await confirmDigest(signature, wallet_address);
+    if (!c.ok) return res.status(400).json({ error: `Sui transaction not confirmed: ${c.status}` });
+    if (ownerMismatch(c.event, wallet_address)) {
+      return res.status(400).json({ error: 'Digest owner does not match wallet_address' });
+    }
+    try {
+      if (vault_id) await updatePPNVaultOnchain(vault_id, { onchain_tx_signature: signature });
+    } catch {
+      /* DB optional */
+    }
+    // Record the deposit in the ledger so it shows in Portfolio → History.
+    // The basket rail records via /api/deposit/confirm; PPN/tranche deposits
+    // ride this confirm, so without this they were invisible to the ledger.
+    // Prefer the bundle/amount the client passed (always available) and fall
+    // back to the Supabase vault row — so recording works even when the vault
+    // lookup misses. Best-effort + idempotent on the digest.
+    try {
+      if (wallet_address) {
+        const already = await getTransactionBySignature(signature);
+        if (!already) {
+          const vault = vault_id ? await getPPNVaultById(vault_id) : null;
+          const ledgerBundle = bundle_id ?? vault?.bundle_id;
+          const principal = Number(amount_usdc) || Number(vault?.principal_usdc) || 0;
+          if (ledgerBundle && principal > 0) {
+            await createTransaction({
+              bundle_id: ledgerBundle,
+              wallet_address,
+              type: 'deposit',
+              amount_usdc: principal,
+              tokens: 0,
+              fee_usdc: principal * 0.0015,
+              tx_signature: signature,
+            });
+          }
+        }
+      }
+    } catch {
+      /* ledger indexing optional */
+    }
+    res.json({ confirmed: true, vault_id: vault_id ?? null, digest: signature, explorer_url: c.explorer_url, event: c.event });
+  } catch (err) {
+    console.error('POST /api/ppn/onchain/confirm error:', err);
+    res.status(500).json({ error: String((err as Error).message ?? err) });
+  }
+});
+
+/** redeem / divest / close all build a real vault redeem of the wallet's
+ *  matching share receipt. */
+async function prepareRedeemHandler(req: Request, res: Response) {
+  if (!vaultConfigured('mUSDC') && !vaultConfigured('dUSDC')) return notConfigured(res);
+  const { wallet_address, bundle_id, tranche_kind, share_id } = req.body as {
+    wallet_address?: string;
+    bundle_id?: string;
+    tranche_kind?: TrancheKind;
+    share_id?: string;
+  };
+  if (!wallet_address) {
+    return res.status(400).json({ error: 'wallet_address is required' });
+  }
+  const prep = await prepareRedeem({
+    owner: wallet_address,
+    share_id,
+    label: bundle_id ? ppnLabel(bundle_id, tranche_kind) : undefined,
+    // This route owns the maturity gate (enforced below), so it is allowed to build
+    // a redeem for a ppn: share. The generic /api/deposit/redeem rail is not.
+    allowProtected: true,
+  });
+  // Derive bundle + tranche from the share's on-chain label (ppn:kind:bundle) so
+  // the redemption always carries a bundle for the ledger + product tagging, and
+  // so the maturity gate can key the right tranche, even when the client didn't
+  // pass them. A share whose label starts with `ppn:` IS a protected note/tranche.
+  const isPpnShare = typeof prep.label === 'string' && prep.label.startsWith('ppn:');
+  const labelParts = isPpnShare ? prep.label.split(':') : [];
+  const labelBundle = isPpnShare ? labelParts[2] ?? null : null;
+  const labelKind = isPpnShare && labelParts[1] && labelParts[1] !== 'note' ? labelParts[1] : null;
+
+  // EARLY-CLAIM GUARD: a principal-protected note / tranche is time-locked until
+  // its maturity_ts (unix seconds) — block early redemption at NAV/par. (A penalized
+  // pre-maturity secondary exit that charges the MM haircut on-chain isn't available
+  // yet; until then, notes are held to maturity.) The tx above is only BUILT, not
+  // executed, so rejecting here never moves funds.
+  //
+  // Maturity is resolved from our DURABLE file store FIRST (written at open,
+  // independent of Supabase/RLS), then falls back to getActivePPNVault. We FAIL
+  // CLOSED: if this is a ppn-labeled share but NO maturity can be found in either
+  // source, we REJECT — never allow. Previously a missing Supabase row (the live
+  // anon-key RLS no-op) made maturity NaN and SKIPPED the lock, allowing early
+  // redemption (audit B4/B5). A legit note opened after this fix is always in the
+  // store, so genuine at-maturity redeems still succeed.
+  const ppnBundle = bundle_id ?? labelBundle;
+  const ppnKind = tranche_kind ?? labelKind;
+  if (isPpnShare || ppnBundle) {
+    let maturitySec: number = NaN;
+    if (ppnBundle) {
+      const stored = await getPPNMaturity(wallet_address, ppnBundle, ppnKind).catch(() => null);
+      if (stored != null && Number.isFinite(stored)) {
+        maturitySec = stored;
+      } else {
+        // Fall back to Supabase (works when a SERVICE_ROLE key is configured;
+        // returns null under anon-key RLS, which the fail-closed branch handles).
+        const v = await getActivePPNVault(wallet_address, ppnBundle).catch(() => null);
+        maturitySec = v ? Number((v as { maturity_ts?: number | string }).maturity_ts) : NaN;
+      }
+    }
+    if (!Number.isFinite(maturitySec)) {
+      // FAIL CLOSED: it IS a note/tranche but maturity is unverifiable — reject
+      // rather than permit an unbounded early redeem.
+      return res.status(403).json({
+        error: 'This note/tranche is locked: maturity could not be verified; redemption is unavailable.',
+        code: 'NOT_MATURED',
+      });
+    }
+    if (Date.now() < maturitySec * 1000) {
+      const days = Math.max(1, Math.ceil((maturitySec * 1000 - Date.now()) / 86_400_000));
+      return res.status(403).json({
+        error: `This note/tranche is locked until maturity (~${days}d remaining); redemption is available at maturity.`,
+        code: 'NOT_MATURED',
+      });
+    }
+  }
+
+  return res.json({
+    kind: 'prepared',
+    bundle_id: bundle_id ?? labelBundle ?? null,
+    wallet_address,
+    share_id: prep.share_id,
+    principal_usdc: prep.economics.gross_usdc,
+    strategy_fee_usdc: prep.economics.fee_usdc,
+    expected_proceeds_usdc: prep.economics.net_usdc,
+    sui_market_id: prep.vault_id,
+    sui_position_id: prep.share_id,
+    tx_bytes: prep.tx_bytes,
+    sender: prep.sender,
+    dry_run: prep.dry_run,
+  });
+}
+
+router.post('/onchain/redeem/prepare', async (req, res) => {
+  try {
+    await prepareRedeemHandler(req, res);
+  } catch (err) {
+    const msg = String((err as Error).message ?? err);
+    res.status(statusForError(msg)).json({ error: msg });
+  }
+});
+router.post('/onchain/divest/prepare', async (req, res) => {
+  try {
+    await prepareRedeemHandler(req, res);
+  } catch (err) {
+    const msg = String((err as Error).message ?? err);
+    res.status(statusForError(msg)).json({ error: msg });
+  }
+});
+router.post('/onchain/close/prepare', async (req, res) => {
+  try {
+    await prepareRedeemHandler(req, res);
+  } catch (err) {
+    const msg = String((err as Error).message ?? err);
+    res.status(statusForError(msg)).json({ error: msg });
+  }
+});
+
+async function confirmCloseHandler(req: Request, res: Response, status: string) {
+  const { vault_id, wallet_address, signature, bundle_id } = req.body as {
+    vault_id?: string;
+    wallet_address?: string;
+    signature: string;
+    bundle_id?: string;
+  };
+  if (!signature) return res.status(400).json({ error: 'signature (tx digest) required' });
+  const c = await confirmDigest(signature, wallet_address);
+  if (!c.ok) return res.status(400).json({ error: `Sui transaction not confirmed: ${c.status}` });
+  if (ownerMismatch(c.event, wallet_address)) {
+    return res.status(400).json({ error: 'Digest owner does not match wallet_address' });
+  }
+  // The redeem's vault_id is the on-chain SHARE id, not the Supabase row id, so
+  // resolve the active note/tranche vault by (wallet, bundle) to mark it
+  // withdrawn AND stamp the redemption signature. Stamping it is what lets the
+  // ledger enrichment tag this sell with its real product (Note / Tranche)
+  // instead of defaulting to "Basket".
+  let resolvedVault: Awaited<ReturnType<typeof getActivePPNVault>> = null;
+  try {
+    if (wallet_address && bundle_id) {
+      resolvedVault = await getActivePPNVault(wallet_address, bundle_id);
+    }
+    const updateId = resolvedVault?.id ?? vault_id;
+    if (updateId) {
+      await updatePPNVaultOnchain(updateId, { status: 'withdrawn', redemption_tx_signature: signature });
+    }
+  } catch {
+    /* DB optional */
+  }
+  // Record the exit in the ledger (Portfolio → History). PPN/tranche sells ride
+  // this handler — without this they never reached the ledger (the basket rail
+  // records its own redemptions in /api/deposit/redeem/confirm). Amount is the
+  // real on-chain USDC delta. Best-effort + idempotent on the digest.
+  try {
+    if (wallet_address) {
+      const already = await getTransactionBySignature(signature);
+      if (!already) {
+        const ledgerBundle = bundle_id ?? resolvedVault?.bundle_id;
+        if (ledgerBundle) {
+          await createTransaction({
+            bundle_id: ledgerBundle,
+            wallet_address,
+            type: 'redemption',
+            amount_usdc: c.usdc_delta ?? 0,
+            tokens: 0,
+            fee_usdc: 0,
+            tx_signature: signature,
+          });
+        }
+      }
+    }
+  } catch {
+    /* ledger indexing optional */
+  }
+  return res.json({
+    confirmed: true,
+    vault_id: vault_id ?? null,
+    digest: signature,
+    explorer_url: c.explorer_url,
+    principal_returned: c.usdc_delta ?? null,
+    status,
+  });
+}
+
+router.post('/onchain/redeem/confirm', (req, res) =>
+  confirmCloseHandler(req, res, 'withdrawn').catch((e) => res.status(500).json({ error: String(e) })),
+);
+router.post('/onchain/divest/confirm', (req, res) =>
+  confirmCloseHandler(req, res, 'active').catch((e) => res.status(500).json({ error: String(e) })),
+);
+router.post('/onchain/close/confirm', (req, res) =>
+  confirmCloseHandler(req, res, 'withdrawn').catch((e) => res.status(500).json({ error: String(e) })),
+);
+
+/**
+ * Secondary-market RFQ for tranche positions, priced by the REAL `quoteTranches`
+ * engine (no hardcoded haircut). Requires DB bundle data to derive the outcome
+ * distribution; returns `missing` for vaults it can't resolve.
+ */
+router.post('/tranche/sell/rfq', async (req: Request, res: Response) => {
+  try {
+    const { vault_ids } = req.body as { vault_ids?: string[] };
+    const ids = Array.isArray(vault_ids) ? vault_ids.filter(Boolean) : [];
+    const quotes = await Promise.all(
+      ids.map(async (id) => {
+        const vault = await getPPNVaultById(id).catch(() => null);
+        if (!vault) return { vault_id: id, status: 'missing' as const, error: 'Vault not found' };
+        const bundle = await getBundleById(vault.bundle_id).catch(() => null);
+        // Refresh the live NAV FIRST (mirrors the canonical MM-desk path in mm.ts):
+        // getLiveNAV re-marks + persists each active leg's probability, so the legs
+        // we read next reflect those fresh marks and BOTH the NAV center (μ) and σ
+        // price off the same live state. Falling back to issue_price only when the
+        // live mark is unavailable.
+        const navRes = await getLiveNAV(vault.bundle_id).catch(() => null);
+        const legs = await getLegsByBundleId(vault.bundle_id).catch(() => []);
+        const nowSec = Math.floor(Date.now() / 1000);
+        const maturitySec = Math.floor(new Date(vault.maturity_date).getTime() / 1000);
+        const matured = nowSec >= maturitySec;
+        const horizonDays = Math.max(1, (maturitySec - nowSec) / 86_400);
+
+        const kind = (vault.tranche_kind ?? 'senior') as TrancheKind;
+        const nav = navRes?.nav ?? bundle?.issue_price ?? vault.price_per_token ?? 0.5;
+        const tranche = quoteTranches({
+          bundleNav: nav,
+          totalLegs: Math.max(1, legs.length || 1),
+          horizonDays,
+          // σ from the REAL live per-leg probabilities (not the √(p(1−p)/N) approx).
+          sigma: basketSigmaFromLegs(legs) ?? undefined,
+        }).find((t) => t.kind === kind);
+
+        const indicativePct = matured ? 100 : tranche ? tranche.pricePerToken * 100 : 95;
+        const indicativeUsdc = vault.principal_usdc * (indicativePct / 100);
+        return {
+          vault_id: id,
+          bundle_id: vault.bundle_id,
+          tranche_kind: kind,
+          status: 'can_execute_onchain' as const,
+          matured,
+          maturity_ts: maturitySec,
+          seconds_remaining: Math.max(0, maturitySec - nowSec),
+          entry_price_per_token: vault.price_per_token ?? null,
+          indicative_price_per_token: tranche?.pricePerToken ?? null,
+          indicative_price_pct: indicativePct,
+          indicative_usdc: indicativeUsdc,
+          mm_spread_bps: tranche?.mmSpreadBps ?? null,
+          underwriting_bps: tranche?.underwritingBps ?? null,
+          protocol_fee_bps: tranche?.protocolFeeBps ?? null,
+          expected_apy_pct: tranche?.expectedYieldPct ?? null,
+          onchain_expected_usdc: indicativeUsdc,
+        };
+      }),
+    );
+    res.json({
+      kind: 'rfq',
+      quotes,
+      executable_count: quotes.filter((q) => q.status === 'can_execute_onchain').length,
+    });
+  } catch (err) {
+    console.error('POST /api/ppn/tranche/sell/rfq error:', err);
+    res.status(500).json({ error: String((err as Error).message ?? err) });
+  }
+});
+
+/** Live PPN portfolio from on-chain `ppn:`-labeled vault shares. */
+router.get('/portfolio/:walletAddress', async (req: Request, res: Response) => {
+  try {
+    const { walletAddress } = req.params;
+    // Reject malformed addresses before any Sui RPC so a bad param returns a
+    // clean 400 instead of a raw RPC-driven 500. A canonical Sui address is
+    // 0x + exactly 64 hex chars; short-but-hex inputs (e.g. 0x123) otherwise
+    // pass and the listShares RPC rejects them with "Invalid params" → 500.
+    if (!/^0x[0-9a-fA-F]{64}$/.test(walletAddress)) {
+      return res.status(400).json({ error: 'invalid address' });
+    }
+    if (!vaultConfigured('mUSDC') && !vaultConfigured('dUSDC')) {
+      return res.json({ wallet_address: walletAddress, vaults: [], summary: { total_vaults: 0, total_principal: 0, total_value: 0, principal_protected: true } });
+    }
+    const [musdcState, dusdcState, shares, dbVaults] = await Promise.all([
+      readVaultState(),
+      vaultConfigured('dUSDC') ? readVaultState(resolveVault('dUSDC')) : Promise.resolve(null),
+      listShares(walletAddress),
+      getPPNVaultsByWallet(walletAddress).catch(() => [] as Awaited<ReturnType<typeof getPPNVaultsByWallet>>),
+    ]);
+    const ppnShares = shares.filter((s) => s.label.startsWith('ppn:'));
+    const DAY = 86_400_000;
+    const now = Date.now();
+    const rows = await Promise.all(ppnShares.map(async (s) => {
+      const parts = s.label.split(':');
+      const bundleId = parts[2] ?? 'pelagos-vault';
+      const trancheKind = parts[1] && parts[1] !== 'note' ? parts[1] : null;
+      // Value each share at the share price of the rail that issued it. listShares
+      // tags every receipt with .currency; a dUSDC position must NOT be valued at
+      // the mUSDC share price.
+      const price = s.currency === 'dUSDC' && dusdcState ? dusdcState.share_price : musdcState.share_price;
+      const value = s.shares * price;
+      // Recover the note's term / apy / created-at from the matching Supabase
+      // vault row. The on-chain share carries principal but no maturity
+      // metadata, so without this the portfolio (and its NaN-guarded UI) shows
+      // "MATURITY UNKNOWN" even though the note was created with a real term.
+      const dbV = dbVaults.find(
+        (v) => v.bundle_id === bundleId && (v.tranche_kind ?? null) === trancheKind,
+      );
+      const createdMs = dbV?.created_at ? new Date(dbV.created_at).getTime() : NaN;
+      const maturityMs = dbV?.maturity_date ? new Date(dbV.maturity_date).getTime() : NaN;
+      // Resolve a human bundle name from the Supabase bundle row; fall back to the
+      // raw bundle id so on-chain-only deploys still render a label, not blank.
+      const bundle = await getBundleById(bundleId).catch(() => null);
+      return {
+        share_id: s.share_id,
+        vault_id: s.share_id,
+        bundle_id: bundleId,
+        bundle_name: bundle?.name ?? bundleId,
+        tranche_kind: trancheKind,
+        principal_usdc: s.principal_usdc,
+        // The FE reads yield_deployed_usdc as the principal put to work in the note.
+        yield_deployed_usdc: s.principal_usdc,
+        current_value: value,
+        accrued_yield: value - s.principal_usdc,
+        status: 'active',
+        created_at: dbV?.created_at ?? null,
+        maturity_date: dbV?.maturity_date ?? null,
+        days_elapsed: Number.isFinite(createdMs) ? Math.max(0, (now - createdMs) / DAY) : 0,
+        days_remaining: Number.isFinite(maturityMs) ? Math.max(0, (maturityMs - now) / DAY) : 0,
+        // Default to the createPPNVault note APY (8) when no Supabase row matches,
+        // so on-chain-only deploys don't collapse every APY to 0%.
+        estimated_apy: dbV?.estimated_apy ?? 8,
+      };
+    }));
+    const totalPrincipal = rows.reduce((sum, r) => sum + r.principal_usdc, 0);
+    const totalValue = rows.reduce((sum, r) => sum + r.current_value, 0);
+    res.json({
+      wallet_address: walletAddress,
+      // No top-level share_price: positions can span both rails (mUSDC + dUSDC),
+      // so a single share price is meaningless. Each row is valued at its own
+      // rail's price above. The FE reads per-row + summary, never this field.
+      vaults: rows,
+      summary: {
+        total_vaults: rows.length,
+        total_principal: totalPrincipal,
+        total_accrued_yield: totalValue - totalPrincipal,
+        total_value: totalValue,
+        principal_protected: true,
+      },
+    });
+  } catch (err) {
+    console.error('GET /api/ppn/portfolio error:', err);
+    res.status(500).json({ error: String((err as Error).message ?? err) });
+  }
+});
+
+// Keep an explicit reference so unused-import lint stays quiet if portfolio
+// reads ever fall back to DB vaults.
+void getPPNVaultsByWallet;
+
+export const ppnRoutes = router;

@@ -1,0 +1,27 @@
+build/
+build.bak/
+node_modules/
+dist/
+coverage/
+*.log
+.DS_Store
+.env
+.idea/
+.vscode/
+package_summaries/
+.claude/skills/
+.tmp/
+deploy/
+move/*/Pub.*.toml
+move/*/*_output.json
+scripts/v2/config.ts
+scripts/v2/e2e-result.json
+package-lock.json
+.next
+pitch_deck/
+# Playwright test results
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+

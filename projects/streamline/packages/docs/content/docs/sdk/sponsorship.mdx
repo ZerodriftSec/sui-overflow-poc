@@ -1,0 +1,45 @@
+---
+title: Gas sponsorship
+description: Run agents gaslessly through the StreamLine Enoki proxy.
+icon: Fuel
+---
+
+# Gas sponsorship
+
+zkLogin users in the app never hold SUI for gas — transactions go through Enoki sponsorship. Agents can use the **same HTTP proxy**; the SDK never embeds Enoki private keys.
+
+## Flow
+
+1. Build the transaction **kind** (`onlyTransactionKind: true`)
+2. `POST {sponsorUrl}` with `{ network, sender, transactionKindBytes }`
+3. Sign the returned bytes with the keypair
+4. `POST {sponsorUrl}/execute` with `{ digest, signature }`
+5. Wait for the digest on-chain
+
+## SDK helper
+
+```ts
+import { createSponsoredKeypairSigner, StreamLine } from "@streamline/sdk";
+
+const signer = createSponsoredKeypairSigner({
+  keypair,
+  client,
+  network: "testnet",
+  // Your deployed app, e.g. https://app.example.com/api/sponsor
+  sponsorUrl: process.env.SPONSOR_URL!,
+});
+
+const sl = new StreamLine({ network: "testnet", signer, client });
+```
+
+Or via the smoke script:
+
+```bash
+SPONSOR_URL=https://your-app/api/sponsor \
+SUI_PRIVATE_KEY=… RECIPIENT=alice@streamline \
+  npm run example:pay -w @streamline/sdk
+```
+
+## Server requirements
+
+The proxy must allowlist StreamLine Move targets (see the frontend `enoki-targets` module) and hold `ENOKI_PRIVATE_API_KEY` server-side only.

@@ -1,0 +1,9 @@
+[package]
+name = "subscriptions"
+version = "2.1.0"
+edition = "2024"
+
+[dependencies]
+openzeppelin_utils = { git = "https://github.com/OpenZeppelin/contracts-sui.git", subdir = "contracts/utils", rev = "a116bf757c075a6404e57bb14003b233fb2a912b" }
+
+

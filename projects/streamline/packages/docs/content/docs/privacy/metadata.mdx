@@ -1,0 +1,64 @@
+---
+title: Encrypted metadata
+description: Briefs and deliverables under Seal — chain policy, local plaintext.
+icon: Lock
+---
+
+# Encrypted metadata
+
+Amounts aren’t the only leak. Milestone titles, statements of work, and file deliverables turn a public stream into a public résumé. StreamLine’s metadata path encrypts that human layer with **Seal** — threshold encryption whose keys unlock only when an **on-chain Move policy** says the requester is allowed.
+
+## Model
+
+```
+Plaintext brief / file
+        │
+        ▼ Seal.encrypt (identity = stream / party)
+        │
+   Ciphertext ──► Walrus (or compact on-envelope storage)
+        │
+   On-chain: blob id + seal_approve policy
+        │
+ Client / freelancer decrypt locally after policy passes
+```
+
+- **Seal** decides *who* can decrypt (1-of-N key servers; no single server unilaterally reads your brief).
+- **Walrus** (and compact envelopes) hold ciphertext off the expensive execution path.
+- **`seal_approve`** in the StreamLine package aborts unless the caller is a rightful party — the contract is the access-control plane.
+
+## Confidential streams already use Seal
+
+For **amounts-only** private streams (`ConfidentialStream`), Seal is not hypothetical: **secret openings** (balances + blindings) are sealed to both wallets at create time and rotated on drip. Decryption never leaves the device.
+
+**Private engagements** (default full-private path) deliver note openings with **ECIES** via `publish_note` — not Seal. Same idea (ciphertext on-chain, plaintext only for the recipient), different crypto. See [Private engagements](/docs/privacy/engagements).
+
+That Seal primitive also extends cleanly to larger payloads — the difference is blob size, not cryptography.
+
+## Deliverables & disputes
+
+The production direction for public *and* confidential streams:
+
+| Artifact | Intent |
+| --- | --- |
+| Scope / milestone narrative | Encrypted to both parties; short public labels optional |
+| Design files, patches, PDFs | Ciphertext in decentralized blob storage; id on-chain |
+| Dispute evidence | Same policy — readable by parties (and arbiter when you add one) |
+
+Indexers store references, never plaintext. Explorers see that work progressed; they don’t scrape your Figma export.
+
+## Why this matters commercially
+
+- **Enterprise-shaped freelance** — NDAs mean something when the brief isn’t in a public event log.
+- **Cross-border teams** — Sensitive IP travels with the stream object, not a Slack DM that outlives the engagement.
+- **Agents** — Machines can attach sealed context to a payment without spraying prompts into RPC archives.
+
+## Status
+
+| Capability | Posture |
+| --- | --- |
+| Seal-sealed openings on amounts-only streams | **Live** in the app |
+| ECIES note publish for private engagements / shielded pool | **Live** in the app |
+| On-chain `seal_approve` policy | **Live** in the Move package |
+| Large deliverable blobs via Walrus | **Rolling out** — same Seal crypto, larger objects |
+
+Build against the live Seal path today; treat Walrus-backed file pipelines as the expanding surface, not a different product.

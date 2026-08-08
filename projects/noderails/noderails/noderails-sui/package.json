@@ -1,0 +1,23 @@
+{
+  "name": "@noderails/sui-deploy",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "JSON-driven Sui Move publish, initialize, and role setup for NodeRails packages",
+  "scripts": {
+    "build": "sui move build --path packages/noderails_escrow && sui move build --path packages/noderails_merchant_manager",
+    "test": "sui move test --path packages/noderails_escrow && sui move test --path packages/noderails_merchant_manager",
+    "deploy:devnet": "DEPLOY_CONFIG=./deploy.devnet.json tsx scripts/deploy-from-config.ts",
+    "deploy:testnet": "DEPLOY_CONFIG=./deploy.testnet.json tsx scripts/deploy-from-config.ts",
+    "deploy:mainnet": "DEPLOY_CONFIG=./deploy.mainnet.json tsx scripts/deploy-from-config.ts",
+    "e2e:check": "tsx scripts/e2e-devnet-check.ts"
+  },
+  "dependencies": {
+    "@mysten/sui": "^1.21.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.4.0"
+  }
+}

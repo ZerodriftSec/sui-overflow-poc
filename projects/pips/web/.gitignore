@@ -1,0 +1,11 @@
+# build artifacts
+.nitro
+.tanstack
+.wrangler
+.output
+.vinxi
+.vercel
+
+# Visual E2E artifacts
+e2e-screenshots/
+.auth-state.json

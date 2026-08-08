@@ -1,0 +1,72 @@
+// Shared arcade leaderboard for the minigames (Line Rider, Flappy Piper): global, keyed to the player's
+// account, rows show a username never an address. One hook owns fetch + submit; the list UI is the flat TE scoreboard both minigames render.
+
+import { useCallback, useRef } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { api, type LeaderboardScoreEntry, type Minigame, type MinigameSubmit } from '@/lib/api'
+import { cnm } from '@/utils/style'
+import { displayHandle } from '@/utils/format'
+
+const fmt = (n: number): string => Math.round(n).toLocaleString('en-US')
+const lbKey = (game: Minigame) => ['minigame-lb', game] as const
+
+// Fetch the board + submit a finished run. Call `startRun` when a run begins and `submit` when it ends;
+// `submit` returns where the run landed and seeds the board cache so the score reflects immediately.
+export function useMinigameLeaderboard(game: Minigame): {
+  board: LeaderboardScoreEntry[]
+  best: number
+  loading: boolean
+  startRun: () => void
+  submit: (score: number) => Promise<MinigameSubmit>
+} {
+  const qc = useQueryClient()
+  const q = useQuery({ queryKey: lbKey(game), queryFn: () => api.minigameLeaderboard(game) })
+  // Held in a ref (not state) so opening a run never re-renders the game.
+  const runToken = useRef<string | null>(null)
+  const m = useMutation({
+    mutationFn: (score: number) => api.submitMinigameScore(game, score, runToken.current),
+    onSuccess: ({ result }) => qc.setQueryData(lbKey(game), { leaderboard: { entries: result.entries, best: result.best } }),
+  })
+  // Fire-and-forget so it's ready by the time the run ends; never blocks or delays play.
+  const startRun = useCallback(() => {
+    runToken.current = null
+    void api
+      .startMinigameRun(game)
+      .then(({ runToken: t }) => {
+        runToken.current = t
+      })
+      .catch(() => {})
+  }, [game])
+  return {
+    board: q.data?.leaderboard.entries ?? [],
+    best: q.data?.leaderboard.best ?? 0,
+    loading: q.isLoading,
+    startRun,
+    submit: async (score) => {
+      const { result } = await m.mutateAsync(score)
+      runToken.current = null
+      return result
+    },
+  }
+}
+
+export function MinigameBoard({ rows }: { rows: LeaderboardScoreEntry[] }) {
+  if (rows.length === 0) {
+    return <div className="font-mono text-[13px] uppercase tracking-[0.14em] text-text-3">No scores yet. Set the first.</div>
+  }
+  return (
+    <div className="flex w-full flex-col font-mono">
+      {rows.map((r) => (
+        <div
+          key={`${r.rank}-${r.username ?? r.displayName}`}
+          className={cnm('flex items-center gap-3 py-1.5 text-[16px] tracking-[0.04em]', r.isYou ? 'text-brand-500' : 'text-text-2')}
+        >
+          <span className="tnum w-6 text-text-3">{r.rank}</span>
+          <span className="flex-1 truncate font-bold">{displayHandle(r)}</span>
+          <span className="tnum font-bold">{fmt(r.score)}</span>
+          {r.isYou && <span className="text-brand-500">◀</span>}
+        </div>
+      ))}
+    </div>
+  )
+}

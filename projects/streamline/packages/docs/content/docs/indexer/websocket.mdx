@@ -1,0 +1,24 @@
+---
+title: WebSocket
+description: Live drip and state updates for UI tickers.
+icon: Radio
+---
+
+# WebSocket
+
+Connect to `ws://<indexer-host>/ws` (or `wss://` in production).
+
+## Frames
+
+```ts
+type LiveUpdate =
+  | { type: "drip"; stream_id: string; amount: number; timestamp_ms: number }
+  | { type: "state"; stream_id: string; state: string };
+```
+
+The Next.js app uses `useLiveUpdates` to refetch React Query caches. Throttle bursts — drip storms can overwhelm RPC if you refetch on every frame.
+
+## Notes
+
+- SDK v1 does **not** wrap WebSocket yet; use the REST helpers or connect directly.
+- Reconnect with backoff when the socket drops.

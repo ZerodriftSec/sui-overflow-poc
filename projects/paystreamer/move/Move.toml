@@ -1,0 +1,10 @@
+[package]
+name = "move_workspace"
+version = "0.0.1"
+edition = "2024"
+
+[dependencies]
+subscriptions = { local = "./subscriptions" }
+stablecoin = { local = "./stablecoin" }
+
+

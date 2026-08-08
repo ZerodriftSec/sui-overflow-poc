@@ -1,0 +1,65 @@
+@import 'tailwindcss';
+@import 'fumadocs-ui/css/neutral.css';
+@import 'fumadocs-ui/css/preset.css';
+
+:root {
+  --sl-accent: #0d9488;
+  --sl-ink: #0f172a;
+}
+
+.dark {
+  --sl-accent: #2dd4bf;
+  --sl-ink: #f8fafc;
+}
+
+html {
+  scrollbar-gutter: stable;
+}
+
+html > body[data-scroll-locked] {
+  margin-right: 0px !important;
+  --removed-body-scroll-bar-size: 0px !important;
+}
+
+/* Docs home — flowing stream lines */
+.sl-stream-lines {
+  color: color-mix(in oklab, var(--sl-accent) 70%, var(--color-fd-foreground));
+}
+
+.dark .sl-stream-lines {
+  color: color-mix(in oklab, var(--sl-accent) 55%, transparent);
+}
+
+.sl-stream-path {
+  animation: sl-stream-flow 14s linear infinite;
+}
+
+.sl-stream-path--rev {
+  animation-name: sl-stream-flow-rev;
+}
+
+@keyframes sl-stream-flow {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: -900;
+  }
+}
+
+@keyframes sl-stream-flow-rev {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: 900;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sl-stream-path,
+  .sl-stream-path--rev {
+    animation: none;
+    stroke-dasharray: none;
+  }
+}

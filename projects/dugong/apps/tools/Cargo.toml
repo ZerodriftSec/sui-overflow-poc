@@ -1,0 +1,17 @@
+[package]
+name = "dugong-tools"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "dugong-bot-authorize"
+path = "src/bin/bot_authorize.rs"
+
+[dependencies]
+dugong-core.workspace = true
+
+tokio.workspace = true
+anyhow.workspace = true
+reqwest.workspace = true
+dotenvy.workspace = true

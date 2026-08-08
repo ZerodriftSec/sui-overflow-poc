@@ -1,0 +1,47 @@
+---
+title: Contracts
+description: Move package modules and the primary stream surface.
+icon: FileCode
+---
+
+# Contracts
+
+Package name: **`streamline`** (Sui testnet). Source: [`contracts/`](https://github.com/minrawsjar/StreamLine/tree/main/contracts).
+
+## Core modules
+
+| Module | Role |
+| --- | --- |
+| `stream` | `create_stream` / `create_stream_v2`, raise, approve, drip, cancel, dispute, confidential variants |
+| `private_stream` | **Default private engagement** — `open_engagement` / `settle_vested` / `claim_exit` over the shielded pool |
+| `shielded_pool` | Note / nullifier Merkle pool (graph privacy primitive) |
+| `lazy_stream` | Legacy lazy vest with plaintext parties (superseded as default by `private_stream`) |
+| `giftcard` | ZK gift cards — vault + Poseidon commitment; amount hidden until claim |
+| `yield_vault` | Deposit / redeem share receipts |
+| `collateral` | Borrow / repay against a live stream |
+| `treasury` | Pro treasury open / deposit / withdraw / invest |
+| `confidential_balance` | Groth16 verify helpers (wrap / transfer / unwrap / lazydrip / shielded / private_settle) |
+
+## Privacy modes (quick map)
+
+| App mode | Move surface |
+| --- | --- |
+| Full private (default) | `private_stream` + `shielded_pool` |
+| Amounts-only | `stream::ConfidentialStream` + Seal openings |
+| Public | `stream::Stream` |
+
+See [Privacy](/docs/privacy) for what each mode hides.
+
+## Entry points agents use today
+
+SDK v1 calls:
+
+```
+package::stream::create_stream_v2<USDC>
+```
+
+with clock `0x6`, milestone vectors, and optional `yield_bps`.
+
+Package and coin type IDs are exported from `@streamline/sdk` via `resolveNetworkConfig("testnet")` and mirrored in the frontend constants.
+
+Full deployment notes: [`contracts/README.md`](https://github.com/minrawsjar/StreamLine/blob/main/contracts/README.md).

@@ -1,0 +1,128 @@
+---
+# Pelagos backend — Akash Network deployment SDL (Stack Definition Language).
+#
+# IMPORTANT: Akash deploys IMAGES, not Dockerfiles. The Dockerfile in
+# backend/Dockerfile is only a recipe — Akash never builds it. You must
+# `docker build` + `docker push` to a public registry FIRST, then reference the
+# pushed tag below. See DEPLOY.md (B) for the exact build/push commands.
+#
+# SECURITY: the operator-signed routes (/api/predict supply/withdraw/mint/redeem/
+# manager/deposit) are now admin-gated via requireAdmin — they return 503 unless
+# ADMIN_API_KEY is set and 401 without a matching x-admin-key header. Set
+# ADMIN_API_KEY to a strong random secret below before exposing this publicly.
+version: "2.0"
+
+services:
+  pelagos-backend:
+    # Published image placeholder. Build + push first:
+    #   docker build -t ghcr.io/tharune/pelagos-backend:latest backend/
+    #   docker push ghcr.io/tharune/pelagos-backend:latest
+    # Use an immutable @sha256 digest in production, not :latest.
+    image: ghcr.io/tharune/pelagos-backend@sha256:3f64ada5324b855028fcfd29b9065dbd28a433a8e3c300da34884c04ecec5baf
+    params:
+      storage:
+        state:
+          mount: /app/state
+          readOnly: false
+    expose:
+      # Matches PORT below and Dockerfile EXPOSE 13101 (app binds config.port).
+      - port: 13101
+        as: 80          # external HTTPS port the Akash provider serves on
+        to:
+          - global: true # publicly reachable — Vercel frontend fetches this host
+    env:
+      # ── Sui operator signer ──────────────────────────────────────────────
+      # DEDICATED, LOW-VALUE operator key. Treat as compromised-by-default: it
+      # signs faucet/admin txs on a public box. Fund it only with what the event
+      # needs and ROTATE IT after the event. NEVER reuse a personal key here.
+      # Format: suiprivkey1... (Bech32).
+      - SUI_PRIVATE_KEY=                 # REQUIRED — set to the dedicated operator key
+      - PREDICT_SIGNER_PRIVATE_KEY=      # REQUIRED — DeepBook Predict operator signer (may equal SUI_PRIVATE_KEY)
+      - ADMIN_API_KEY=                   # REQUIRED — strong random secret; gates operator-signed routes (unset = they 503)
+
+      # ── Runtime / networking ─────────────────────────────────────────────
+      - PORT=13101                       # must equal expose.port above
+      - STATE_DIR=/app/state             # file-backed manager/maturity registries
+      - SUI_NETWORK=testnet
+      - SUI_RPC_URL=https://fullnode.testnet.sui.io:443
+      - SUI_GRAPHQL_URL=https://graphql.testnet.sui.io/graphql
+      - SUI_GRANT_MIST=3000000000        # 3 SUI; exceeds the 2.5 SUI Predict open reservation below
+      - DUSDC_GRANT_MAX_UI=25            # one documented demo grant; dUSDC is a finite operator float
+      - MUSDC_GRANT_UI=10000
+      - FAUCET_GLOBAL_HOURLY_LIMIT=12    # bounds public operator-float drain across all callers
+      - PREDICT_OPEN_GAS_BUDGET_MIST=2500000000 # 2.5 SUI; covers the 12-leg managed Predict open ceiling
+      # Vercel frontend origin. *.vercel.app is auto-allowed by CORS, so this is
+      # mainly for an explicit/custom domain. Comma-separated list is supported.
+      - FRONTEND_URL=https://pelagos-sui.vercel.app
+
+      # ── On-chain object / package IDs (mirror backend/.env.example) ──────
+      - SUI_PACKAGE_ID=0x598434be38a69bf97b70490d320a698445990de38eb36e2f4c9d41dbe1ff3e45
+      - SUI_MARKET_MODULE=prediction_market
+      - SUI_ACTIVE_ADDRESS=0xcad0f800f44a48360c01e9fa2d21e779bd829cb60e7220227ed16bb74d4d73e5
+      - SUI_MARKET_ADMIN_CAP_ID=0x0c14a699335427625eb7317cd16e758f201b8a0413d58fd0592b20e761597c4b
+      - MARKET_ADMIN_CAP_ID=0x0c14a699335427625eb7317cd16e758f201b8a0413d58fd0592b20e761597c4b
+      # Pelagos on-chain vault (pelagos_vault::vault, generic Vault<MOCK_USDC>)
+      - VAULT_PACKAGE_ID=0xcaff49f849bdf83b2df754ffc7d43c07b19ee33c2395255185607b55802e2b19
+      - VAULT_OBJECT_ID=0x5fdc7d7a94d1dc7ae459b2e3f6760cb3b6745e6c3e4f2eed511da54bd0042d2d
+      - VAULT_ADMIN_CAP_ID=0x177582ae9cb44b119835d224d4b8d2f14aac0157d41f0931b55ebef0f66ef348
+      # dUSDC settlement vault (Vault<DUSDC>) — real DeepBook Predict rail
+      - VAULT_DUSDC_OBJECT_ID=0x9110df6651807391a65f060a5c1fb0cfecf3163ecb11d879e1aa552f1868c54a
+      - VAULT_DUSDC_ADMIN_CAP_ID=0xeecb761376a03d5d875846886905af59ebd418150666666102806e54fe7f843f
+
+      # ── DeepBook Predict + dUSDC coin type ───────────────────────────────
+      - PREDICT_NETWORK=testnet
+      - PREDICT_MODE=managed
+      - PREDICT_DEPLOYMENT_MANIFEST=/app/config/predict-managed.testnet.json
+      - PREDICT_SERVER_URL=direct+sui://testnet
+      - PREDICT_PACKAGE_ID=0xf5716c88594bb34e89350717bc5938b0879f63262eedcb8cb1064d512563cb34
+      - PREDICT_OBJECT_ID=0xc075248dc9e51527229564e37416d816e01df046ba77ce167151362a74fa9794
+      - PREDICT_DUSDC_TYPE=0xe95040085976bfd54a1a07225cd46c8a2b4e8e2b6732f140a0fc49850ba73e1a::dusdc::DUSDC
+      - PREDICT_FEED_ENABLED=true
+      - PREDICT_FEED_INTERVAL_MS=10000
+
+      # ── Mock-USDC type / metadata / decimals + mint authority ────────────
+      - MOCK_USDC_TYPE=0x598434be38a69bf97b70490d320a698445990de38eb36e2f4c9d41dbe1ff3e45::mock_usdc::MOCK_USDC
+      - MOCK_USDC_METADATA_ID=0x4ff64a1b6d5fa953c7d419a1e87472457aafbbfa8c54d12935e2504f78f3504f
+      - MOCK_USDC_DECIMALS=6
+      - MOCK_USDC_FAUCET_ID=0xd1f67a0ec1d4b26631fcd1810f16bbc0fdf88a83cfe04c26ad400566528a07f0
+      # TreasuryCap that mints test mUSDC — held by the operator key. Low-value, rotate after event.
+      - MOCK_USDC_TREASURY_CAP_ID=0x16b34adda0f968ab481449d55f445d3598e0a617f2d6a83d62e84907be534aa1
+
+      # ── Optional services ────────────────────────────────────────────────
+      # Leave BOTH empty to run in Sui-only mode: the backend short-circuits all
+      # Supabase calls and sources execution state from Sui testnet objects +
+      # the browser-local ledger. Set both only if you want the Supabase rails.
+      - SUPABASE_URL=
+      - SUPABASE_ANON_KEY=
+
+profiles:
+  compute:
+    pelagos-backend:
+      resources:
+        # Modest testnet sizing — a single Express process doing RPC fan-out.
+        cpu:
+          units: 0.5
+        memory:
+          size: 1Gi
+        storage:
+          - size: 1Gi
+          - name: state
+            size: 1Gi
+            attributes:
+              persistent: true
+              class: beta3
+  placement:
+    dcloud:
+      pricing:
+        pelagos-backend:
+          denom: uakt
+          amount: 1000   # max uAKT/block bid the tenant will accept
+
+deployment:
+  pelagos-backend:
+    dcloud:
+      profile: pelagos-backend
+      # EXACTLY ONE replica. The in-process cron and the operator faucet float
+      # assume a single instance; >1 replica double-spends the float and
+      # duplicates NAV writes. Do not scale this horizontally.
+      count: 1

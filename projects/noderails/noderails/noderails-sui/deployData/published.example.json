@@ -1,0 +1,14 @@
+{
+  "network": "devnet",
+  "chainId": 201,
+  "escrowPackageId": "0xYOUR_ESCROW_PACKAGE_ID",
+  "merchantManagerPackageId": "0xYOUR_MERCHANT_MANAGER_PACKAGE_ID",
+  "escrowConfigObjectId": "0xYOUR_ESCROW_CONFIG_OBJECT_ID",
+  "paymentRegistryObjectId": "0xYOUR_PAYMENT_REGISTRY_OBJECT_ID",
+  "walletRegistryObjectId": "0xYOUR_WALLET_REGISTRY_OBJECT_ID",
+  "merchantManagerConfigObjectId": "0xYOUR_MERCHANT_MANAGER_CONFIG_OBJECT_ID",
+  "nonceRegistryObjectId": "0xYOUR_NONCE_REGISTRY_OBJECT_ID",
+  "escrowUpgradeCapId": "0xYOUR_ESCROW_UPGRADE_CAP_ID",
+  "merchantManagerUpgradeCapId": "0xYOUR_MERCHANT_MANAGER_UPGRADE_CAP_ID",
+  "publishedAt": null
+}

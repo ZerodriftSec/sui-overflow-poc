@@ -1,0 +1,25 @@
+---
+title: Gift cards
+description: ZK prepaid gift cards — amount hidden on-chain until claim.
+icon: Gift
+---
+
+# Gift cards
+
+A **gift card** is prepaid USDC in a URL. You lock funds into a shared vault behind a Poseidon commitment, share `/g/<id>?s=…&v=…&r=…`, and the recipient claims once with an unwrap proof.
+
+The **amount stays hidden on-chain until claim**. Sender and claimer remain public; the note is plaintext in v1. Treat the link like cash — it carries the opening (`v` amount + `r` blinding).
+
+This is the **push** sibling of [request links](/docs/concepts/streams) (pull invoices that fund a stream).
+
+## Flow
+
+1. **Create** — User app → **Transfer** → **Gift card** → amount → Lock & get link (proves wrap, QR + copy)
+2. **Share** — Anyone with the URL can open the claim page
+3. **Claim** — Connect wallet → prove unwrap → Claim to wallet (gasless when sponsored)
+
+On-chain: `streamline::giftcard` stores `blake2b256(secret)` and `Poseidon(amount, blinding)`. Funds sit in `GiftCardVault`; individual cards have **no** balance field (so amount cannot leak via object fields).
+
+## Status
+
+Module and app UI ship in-repo. **Publish/upgrade** the Move package, then call `giftcard::create_vault` once and set `NEXT_PUBLIC_GIFT_CARD_VAULT_TESTNET` (see `.env.example`) before create/claim succeed against live RPC.

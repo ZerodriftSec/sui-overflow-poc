@@ -1,0 +1,1189 @@
+"use client";
+
+// ---------------------------------------------------------------------------
+// Portfolio — a unified position + P&L view across every product (baskets, risk
+// slices, protected notes, distribution, structured sim positions, lending),
+// tracking independent mUSDC + dUSDC testnet rails in one USD-denominated view.
+// ---------------------------------------------------------------------------
+
+import React, { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { Header, PageFrame } from "../_components/Header";
+import { C, FS, FD, FM, EASE, tc, trancheColor, fmtUsd } from "../_lib/tokens";
+import { useMode } from "../_lib/mode";
+import { useLiveBaskets } from "../_lib/use-live-baskets";
+import { bundleById } from "../_lib/bundles";
+import { useSandbox, type BasketPosition } from "../_lib/demo-state";
+import { useActiveWalletAddress, useUsdcBalance, useDusdcBalance, useWalletSigner } from "../_lib/wallet-bridge";
+import { fetchBasketPortfolio, usePbuBalances } from "../_lib/portfolio-client";
+import { fetchPpnPortfolio, ppnRedeem, PpnError } from "../_lib/ppn-client";
+import { mergePpnVaults, mergeTranches } from "../_lib/ppn-hydrate";
+import { redeemFromBundle, DepositError } from "../_lib/deposit-client";
+import {
+  groupVirtualByUiBundle,
+  clearVirtualPositionsByUiBundleId,
+  type GroupedVirtualPosition,
+} from "../_lib/virtual-positions";
+import { History } from "./_history";
+import {
+  fetchContinuousPositions,
+  type ContinuousPosition,
+} from "../_lib/distribution-continuous-client";
+import { useLendingSnapshot } from "../_lib/lending-client";
+import { fetchSimPositions, simSettle, type SimPosition } from "../_lib/sim-client";
+import { fetchYieldAccount, type YieldAccount } from "../_lib/v2-clients";
+
+type View = "positions" | "history";
+
+export default function PortfolioPage() {
+  const { mode } = useMode();
+  const { state, totals, dispatch } = useSandbox();
+  const appWalletAddress = useActiveWalletAddress();
+  const usdc = useUsdcBalance();   // mUSDC (Pelagos USDC)
+  const dusdc = useDusdcBalance(); // dUSDC (DeepBook Predict quote asset)
+  const walletSigner = useWalletSigner();
+  const [redeemBusy, setRedeemBusy] = useState<string | null>(null);
+  const [redeemError, setRedeemError] = useState<Record<string, string>>({});
+  const [simBusy, setSimBusy] = useState<string | null>(null);
+  const [simError, setSimError] = useState<Record<string, string>>({});
+  const basketState = useLiveBaskets();
+
+  // Live Sui USDC lending market (DeFiLlama-sourced supply APY + utilization).
+  // The position $-value stays the user's actual lent amount (0 until they
+  // deposit); this just surfaces the real external yield in the allocation row.
+  const { snapshot: lendingSnapshot, loading: lendingLoading } = useLendingSnapshot();
+
+  // Authoritative on-chain PBU unit balances per bundle. The ONLY source we
+  // trust for "how many basket tokens does this wallet actually own"; cancelled
+  // deposits never mint PBU so they contribute $0 here regardless of stale UI.
+  const pbuBalances = usePbuBalances();
+  const pbuTokensByUuid = React.useMemo(() => {
+    const out: Record<string, number> = {};
+    for (const entry of pbuBalances.balances) {
+      if (entry.uiAmount > 0) out[entry.bundleId] = entry.uiAmount;
+    }
+    return out;
+  }, [pbuBalances.balances]);
+  const hydratedTokensByUuid = React.useMemo(() => {
+    const out: Record<string, number> = {};
+    for (const position of state.basketPositions) {
+      if (position.qty > 0) {
+        out[position.bundleId] = (out[position.bundleId] ?? 0) + position.qty;
+      }
+    }
+    return out;
+  }, [state.basketPositions]);
+
+  // Single source of truth for "is there a wallet we can attribute balances to".
+  const walletReady = Boolean(appWalletAddress);
+  const virtualGroupsForWallet: GroupedVirtualPosition[] =
+    walletReady && appWalletAddress
+      ? groupVirtualByUiBundle(appWalletAddress)
+      : [];
+  const suiTokensByUuid = virtualGroupsForWallet.reduce<Record<string, number>>(
+    (acc, g) => {
+      acc[g.uuid] = (acc[g.uuid] ?? 0) + g.tokens;
+      return acc;
+    },
+    {},
+  );
+  const onchainTokensByUuid =
+    Object.keys(suiTokensByUuid).length > 0
+      ? suiTokensByUuid
+      : Object.keys(pbuTokensByUuid).length > 0
+        ? pbuTokensByUuid
+        : hydratedTokensByUuid;
+  // Both testnet units are displayed at a nominal $1 for portfolio arithmetic, but
+  // they are independent rails with no swap or peg between them.
+  const liveMusdc = walletReady ? usdc.uiAmount : 0;
+  const liveDusdc = walletReady ? dusdc.uiAmount : 0;
+  const liveUsdc = liveMusdc + liveDusdc;
+
+  const [renderNow, setRenderNow] = useState<number>(() => Date.now());
+  const [view, setView] = useState<View>("positions");
+  const [distPositions, setDistPositions] = useState<ContinuousPosition[]>([]);
+  const [simPositions, setSimPositions] = useState<SimPosition[]>([]);
+  const [yieldAccount, setYieldAccount] = useState<YieldAccount | null>(null);
+  useEffect(() => {
+    const t = setInterval(() => setRenderNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  const effectiveTranches = walletReady ? state.tranchePositions : [];
+  const effectivePpnVaults = walletReady ? state.ppnVaults : [];
+
+  // PPN accrued yield (ticks with renderNow). principal * apy% / 365 capped at
+  // maturity. Every field guarded against an indexer race producing NaN.
+  const ppnAccruedYield = effectivePpnVaults.reduce((sum, v) => {
+    const principal = Number.isFinite(v.principal) ? v.principal : 0;
+    const apy = Number.isFinite(v.apy) ? v.apy : 0;
+    const maturityDays = Number.isFinite(v.maturityDays) ? v.maturityDays : 0;
+    const createdAt = Number.isFinite(v.createdAt) ? v.createdAt : renderNow;
+    const elapsedDays = Math.max(0, (renderNow - createdAt) / 86_400_000);
+    return sum + principal * (apy / 100 / 365) * Math.min(elapsedDays, maturityDays);
+  }, 0);
+  // Tranche accrued yield. Same straight-line approximation, capped at maturity.
+  const trancheAccruedYield = effectiveTranches.reduce((sum, p) => {
+    if (p.apy == null || p.createdAt == null || p.maturityDays == null) return sum;
+    const principal = p.qty * p.avgCost;
+    const elapsedDays = Math.max(0, (renderNow - p.createdAt) / 86_400_000);
+    return sum + principal * (p.apy / 100 / 365) * Math.min(elapsedDays, p.maturityDays);
+  }, 0);
+
+  const effectiveTrancheValue = effectiveTranches.reduce((sum, p) => {
+    const v = p.qty * p.avgCost;
+    return sum + (Number.isFinite(v) ? v : 0);
+  }, 0);
+  const effectivePpnValue = effectivePpnVaults.reduce(
+    (sum, v) => sum + (Number.isFinite(v.principal) ? v.principal : 0),
+    0,
+  );
+
+  // Open continuous distribution positions: collateral escrowed at open.
+  const effectiveDistPositions = walletReady
+    ? distPositions.filter((p) => !p.settled)
+    : [];
+  const distValue = effectiveDistPositions.reduce(
+    (sum, p) => sum + (Number.isFinite(p.collateral_usdc) ? p.collateral_usdc : 0),
+    0,
+  );
+
+  // Open mUSDC structured positions (DeepBook strips / options / vol / notes settled
+  // in Pelagos USDC): the premium is escrowed in the vault until settle.
+  // Only confirmed-open positions — a "pending" sim row is an orphan from a
+  // rejected/abandoned wallet signature and must not pollute the portfolio.
+  const openSimPositions = walletReady ? simPositions.filter((p) => p.status === "open" || p.status === "settling") : [];
+  const simValue = openSimPositions.reduce(
+    (sum, p) => sum + (Number.isFinite(p.premium_usd) ? p.premium_usd : 0),
+    0,
+  );
+  const deepbookAccountValue = walletReady && yieldAccount ? yieldAccount.total_value_usd : 0;
+
+  // Basket value at the wallet's cost basis (issue price ≈ deposited USDC). We
+  // intentionally don't mark baskets to NAV pre-resolution (exit_active pays the
+  // pool ratio, not qty×NAV), so basket unrealized P&L stays 0 until redeem.
+  const onchainBasketValue = walletReady
+    ? state.basketPositions.reduce((sum, position) => {
+        const held = onchainTokensByUuid[position.bundleId] ?? 0;
+        const quantity = Math.min(position.qty, held);
+        const unitCost = position.avgCost > 0 ? position.avgCost : (position.navHint ?? 0);
+        return sum + quantity * unitCost;
+      }, 0)
+    : 0;
+  const onchainBasketPnl = 0;
+
+  // Top-line value + P&L. Every term is already 0 when disconnected (walletReady
+  // gating), so the headline collapses to 0 without a separate guard.
+  const displayTotal = walletReady
+    ? liveUsdc +
+      onchainBasketValue +
+      effectiveTrancheValue +
+      effectivePpnValue +
+      ppnAccruedYield +
+      trancheAccruedYield +
+      distValue +
+      simValue +
+      deepbookAccountValue +
+      totals.lendValue -
+      totals.loanDebt
+    : 0;
+  const displayPnl = walletReady
+    ? onchainBasketPnl + ppnAccruedYield + trancheAccruedYield
+    : 0;
+
+  // Hydrate basket / note / distribution positions whenever the wallet changes.
+  const hydratePortfolio = React.useCallback(async () => {
+    if (!appWalletAddress) return;
+    const wallet = appWalletAddress;
+    await Promise.allSettled([
+      fetchBasketPortfolio(wallet).then((positions) =>
+        dispatch({ type: "basket/hydrate", positions }),
+      ),
+      fetchPpnPortfolio(wallet).then((portfolio) => {
+        dispatch({ type: "ppn/hydrate", vaults: mergePpnVaults(portfolio) });
+        dispatch({ type: "tranche/hydrate", positions: mergeTranches(portfolio) });
+      }),
+      fetchContinuousPositions(wallet).then((r) =>
+        setDistPositions(Array.isArray(r?.positions) ? r.positions : []),
+      ),
+      fetchSimPositions(wallet).then((ps) => setSimPositions(Array.isArray(ps) ? ps : [])),
+      fetchYieldAccount(wallet).then(setYieldAccount),
+    ]);
+  }, [appWalletAddress, dispatch]);
+
+  // Settle an open mUSDC position: the protocol computes the payoff and mints it.
+  // On success we optimistically flip the local row to "settled" so it leaves the
+  // open list immediately (the open filter is status === "open"), then refetch the
+  // authoritative list + balances so the headline/total/count reconcile.
+  const settleSimPosition = React.useCallback(async (simId: string) => {
+    setSimError((prev) => { const n = { ...prev }; delete n[simId]; return n; });
+    setSimBusy(simId);
+    try {
+      await simSettle(simId);
+      setSimPositions((prev) =>
+        prev.map((p) => (p.sim_id === simId ? { ...p, status: "settled" as const } : p)),
+      );
+      await hydratePortfolio();
+      void usdc.refresh(); void dusdc.refresh();
+    } catch (err) {
+      const msg = err instanceof Error
+        ? (/user rejected|rejected the request/i.test(err.message) ? "Transaction was rejected in your wallet." : err.message)
+        : String(err);
+      setSimError((prev) => ({ ...prev, [simId]: msg }));
+    } finally {
+      setSimBusy(null);
+    }
+  }, [hydratePortfolio, usdc, dusdc]);
+
+  // On an A->B account switch the address changes but `walletReady` stays true,
+  // so account A's reducer state + local position lists would flash through the
+  // (still-true) walletReady gates until hydratePortfolio resolves for B. Clear
+  // them synchronously the instant the address changes so the stale account
+  // never renders. The disconnect path (address -> undefined) is already safe
+  // via walletReady gating, and this clear is harmless there too.
+  useEffect(() => {
+    dispatch({ type: "reset" });
+    setDistPositions([]);
+    setSimPositions([]);
+    setYieldAccount(null);
+  }, [appWalletAddress, dispatch]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      if (cancelled) return;
+      await hydratePortfolio();
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [hydratePortfolio]);
+
+  // Poll the authoritative sim list so a position settled out-of-band (another
+  // tab/session, or via the explorer) leaves the open list and the headline/total
+  // reconcile without a manual reload. The open filter (status === "open") drops
+  // any row that has flipped to "settled" server-side.
+  useEffect(() => {
+    if (!appWalletAddress) return;
+    const wallet = appWalletAddress;
+    const t = setInterval(() => {
+      void fetchSimPositions(wallet).then((ps) => setSimPositions(Array.isArray(ps) ? ps : []));
+      void fetchYieldAccount(wallet).then(setYieldAccount).catch(() => setYieldAccount(null));
+    }, 8000);
+    return () => clearInterval(t);
+  }, [appWalletAddress]);
+
+  async function handleRedeem(bundleId: string, uiBundleId: string, tokens: number) {
+    if (!walletReady || !appWalletAddress) return;
+    setRedeemError((prev) => {
+      const next = { ...prev };
+      delete next[bundleId];
+      return next;
+    });
+    setRedeemBusy(bundleId);
+    try {
+      // TODO(settlement-currency): pass `currency: <position's settlement currency>`
+      // so a dUSDC-settled basket deposit redeems against the dUSDC vault. The
+      // basket position objects (VirtualPosition / BasketPosition / on-chain PBU
+      // balance) do not currently persist the deposit currency, so we cannot
+      // determine it here and fall back to the mUSDC default. Thread it once the
+      // position carries its settlement currency (recorded at deposit time).
+      await redeemFromBundle({ wallet: walletSigner, bundleId, amountTokens: tokens });
+      clearVirtualPositionsByUiBundleId(appWalletAddress, bundleId, uiBundleId);
+      await hydratePortfolio();
+      void usdc.refresh(); void dusdc.refresh();
+    } catch (err) {
+      const msg =
+        err instanceof DepositError
+          ? err.message
+          : err instanceof Error
+            ? /user rejected/i.test(err.message)
+              ? "Transaction was rejected in your wallet."
+              : err.message
+            : String(err);
+      if (/no vault position/i.test(msg) && appWalletAddress) {
+        clearVirtualPositionsByUiBundleId(appWalletAddress, bundleId, uiBundleId);
+        await hydratePortfolio();
+        void usdc.refresh(); void dusdc.refresh();
+      } else {
+        setRedeemError((prev) => ({ ...prev, [bundleId]: msg }));
+      }
+    } finally {
+      setRedeemBusy(null);
+    }
+  }
+
+  async function handleRedeemPpn(rowKey: string, opts: { vaultIds?: string[]; bundleId?: string }) {
+    setRedeemError((prev) => {
+      const next = { ...prev };
+      delete next[rowKey];
+      return next;
+    });
+    setRedeemBusy(rowKey);
+    try {
+      // TODO(settlement-currency): pass `currency: <position's settlement currency>`
+      // so a dUSDC-settled note/tranche redeems against the dUSDC vault. The PPN
+      // portfolio rows (PpnVault / TranchePosition, hydrated from /api/ppn/portfolio)
+      // do not currently expose the settlement currency, so we cannot determine it
+      // here and fall back to the mUSDC default. Thread it once the portfolio entry
+      // carries its settlement currency (recorded at open time).
+      const ids = opts.vaultIds?.filter(Boolean) ?? [];
+      if (ids.length > 0) {
+        for (const vaultId of ids) {
+          await ppnRedeem({ wallet: walletSigner, vaultId, bundleId: opts.bundleId });
+        }
+      } else {
+        await ppnRedeem({ wallet: walletSigner, bundleId: opts.bundleId });
+      }
+      await hydratePortfolio();
+      void usdc.refresh(); void dusdc.refresh();
+    } catch (err) {
+      const msg =
+        err instanceof PpnError
+          ? err.message
+          : err instanceof Error
+            ? /user rejected/i.test(err.message)
+              ? "Transaction was rejected in your wallet."
+              : err.message
+            : String(err);
+      setRedeemError((prev) => ({ ...prev, [rowKey]: msg }));
+    } finally {
+      setRedeemBusy(null);
+    }
+  }
+
+  const resolveBasket = (id: string) => {
+    if (basketState.status === "ok") {
+      const live = basketState.baskets.find((b) => b.id === id);
+      if (live) return { id: live.id, tier: live.tier, nav: live.nav };
+    }
+    const seed = bundleById(id);
+    return seed ? { id: seed.id, tier: seed.tier, nav: seed.nav } : null;
+  };
+
+  // Allocation rows — same sources as displayTotal so headline + rows reconcile.
+  // Live lending market APY for the allocation row's right cell. While the
+  // snapshot loads we show "…"; once live we surface the real supply APY (and
+  // utilization when present) rather than the position's allocation share.
+  const lendingApyLabel = lendingSnapshot
+    ? `${lendingSnapshot.market_supply_apy.toFixed(2)}% APY${
+        Number.isFinite(lendingSnapshot.utilization)
+          ? ` · ${(lendingSnapshot.utilization * 100).toFixed(0)}% util`
+          : ""
+      }`
+    : lendingLoading
+      ? "…"
+      : "—";
+
+  const productRows: Array<{
+    id: string;
+    label: string;
+    description: string;
+    value: number;
+    color: string;
+    href?: string;
+    /** When set, the row's right-hand percentage cell shows this instead of the allocation share. */
+    metaOverride?: string;
+  }> = [
+    { id: "cash", label: "Cash", description: `${fmtUsd(liveMusdc, 0)} mUSDC + ${fmtUsd(liveDusdc, 0)} dUSDC · separate rails`, value: liveUsdc, color: C.textMuted },
+    { id: "baskets", label: "Market Baskets", description: "Basket units held directly", value: onchainBasketValue, color: C.tealLight, href: "/app/basket" },
+    { id: "tranches", label: "Risk Slices", description: "Senior / mezzanine / junior", value: effectiveTrancheValue + trancheAccruedYield, color: C.amber, href: "/app/tranche" },
+    { id: "ppn", label: "Protected Notes", description: "PLP floor-targeted notes", value: effectivePpnValue + ppnAccruedYield, color: C.violet, href: "/app/ppn" },
+    { id: "distribution", label: "Distribution Markets", description: "Continuous μ/σ · collateral at risk", value: distValue, color: C.coral, href: "/app/distribution" },
+    ...(simValue > 0
+      ? [{ id: "structured", label: "Structured Positions", description: "Strips, yield, notes & vol · mUSDC", value: simValue, color: C.green }]
+      : []),
+    ...(deepbookAccountValue > 0
+      ? [{ id: "deepbook", label: "DeepBook Account", description: `${yieldAccount?.shares.toFixed(4) ?? "0"} PLP · ${yieldAccount?.range_position_count ?? 0} ranges · dUSDC`, value: deepbookAccountValue, color: C.green, href: "/app/deepbook" }]
+      : []),
+    { id: "lending", label: "Lending", description: "Sui USDC market rate", value: walletReady ? totals.lendValue : 0, color: C.blue, metaOverride: lendingApyLabel },
+  ];
+  const productTotal = productRows.reduce((sum, row) => sum + row.value, 0);
+
+  const deployedValue = Math.max(0, displayTotal - liveUsdc);
+  const deployedPct = displayTotal > 0 ? (deployedValue / displayTotal) * 100 : 0;
+
+  // Net account value over time. Anchored to the live total and stepped only by
+  // REAL realized P&L from settled distribution positions (net - collateral) —
+  // no fabricated data, so a wallet with no realized change shows a flat line.
+  const navChart = useMemo(() => {
+    if (!walletReady) return null;
+    const settled = (distPositions || [])
+      .filter((p) => p.settled && Number.isFinite(p.net_usdc) && Number.isFinite(p.collateral_usdc))
+      .map((p) => ({ t: (p.settled_at ?? p.opened_at) || Date.now(), delta: (p.net_usdc as number) - p.collateral_usdc }))
+      .sort((a, b) => a.t - b.t);
+    const now = Date.now();
+    let series: Array<{ t: number; v: number }>;
+    if (settled.length === 0) {
+      series = [{ t: now - 7 * 864e5, v: displayTotal }, { t: now, v: displayTotal }];
+    } else {
+      const totalDelta = settled.reduce((acc, e) => acc + e.delta, 0);
+      let v = displayTotal - totalDelta;
+      series = [{ t: Math.min(settled[0].t, now - 864e5), v }];
+      for (const e of settled) { v += e.delta; series.push({ t: e.t, v }); }
+      series.push({ t: now, v: displayTotal });
+    }
+    const W = 600, H = 88, padT = 8, padB = 8;
+    const t0 = series[0].t, t1 = series[series.length - 1].t || t0 + 1;
+    const vs = series.map((q) => q.v);
+    let lo = Math.min(...vs), hi = Math.max(...vs);
+    if (hi - lo < 1e-9) { const pad = Math.max(1, Math.abs(lo) * 0.02); lo -= pad; hi += pad; }
+    const sx = (t: number) => ((t - t0) / (t1 - t0 || 1)) * W;
+    const sy = (v: number) => padT + (1 - (v - lo) / (hi - lo)) * (H - padT - padB);
+    const line = series.map((q, i) => `${i ? "L" : "M"} ${sx(q.t).toFixed(1)} ${sy(q.v).toFixed(1)}`).join(" ");
+    const area = `${line} L ${W.toFixed(1)} ${H} L 0 ${H} Z`;
+    const up = series[series.length - 1].v >= series[0].v;
+    return { W, H, line, area, up, flat: settled.length === 0 };
+  }, [walletReady, distPositions, displayTotal]);
+  // Count every position the grid actually renders. This MUST include the
+  // confirmed-open structured (sim) positions — omitting them showed "Positions 0"
+  // while three sim cards were on screen. Settled/pending sim rows are already
+  // excluded (openSimPositions filters status === "open"), so a settlement that
+  // drops a card also decrements this headline.
+  const positionCount =
+    Object.keys(onchainTokensByUuid).length +
+    effectiveTranches.length +
+    effectivePpnVaults.length +
+    effectiveDistPositions.length +
+    openSimPositions.length +
+    (deepbookAccountValue > 0 ? 1 : 0);
+
+  return (
+    <>
+      <style>{`
+        .pf-tabs {
+          display: flex; gap: 2px; padding: 3px; background: ${C.surface};
+          border: 0.5px solid ${C.border}; border-radius: 8px;
+        }
+        .pf-tab {
+          border: 0; border-radius: 6px; padding: 8px 14px; cursor: pointer;
+          font-family: ${FD}; font-size: 12px; letter-spacing: 0.01em;
+          background: transparent; color: ${C.textSecondary};
+          transition: color 0.15s ${EASE}, background 0.15s ${EASE};
+        }
+        .pf-tab:hover { color: ${C.textPrimary}; }
+        .pf-tab.active { background: ${C.card}; color: ${C.tealLight}; font-weight: 600; }
+        .pf-overview {
+          display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+          gap: 14px; margin-bottom: 22px; align-items: stretch;
+        }
+        .pf-panel {
+          background: ${C.card}; border: 0.5px solid ${C.border}; border-radius: 12px; padding: 20px;
+        }
+        .pf-card {
+          background: ${C.card}; border: 0.5px solid ${C.border}; border-radius: 12px; padding: 18px;
+        }
+        .pf-summary-metrics {
+          display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px;
+          margin-top: 20px; padding-top: 18px; border-top: 0.5px solid ${C.border};
+        }
+        .pf-alloc-row {
+          display: grid; grid-template-columns: minmax(0, 1fr) 96px 78px;
+          gap: 16px; align-items: center; padding: 13px 0;
+          border-top: 0.5px solid ${C.border}; text-decoration: none;
+          transition: opacity 0.15s ${EASE};
+        }
+        .pf-alloc-row:first-child { border-top: 0; }
+        .pf-alloc-row:hover { opacity: 0.84; }
+        .pf-spark { height: 5px; border-radius: 999px; background: ${C.surface}; overflow: hidden; }
+        .pf-spark span { display: block; height: 100%; border-radius: inherit; }
+        .pf-positions { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); gap: 14px; }
+        @media (max-width: 1180px) {
+          .pf-overview { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 900px) {
+          .pf-positions { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 760px) {
+          .pf-head { align-items: flex-start !important; flex-direction: column; }
+          .pf-tabs { width: 100%; overflow-x: auto; }
+          .pf-summary-metrics { grid-template-columns: 1fr; gap: 12px; }
+          .pf-alloc-row { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+        }
+      `}</style>
+      <Header />
+      <PageFrame wide>
+        <div className="pf-head" style={{ display: "flex", alignItems: "end", justifyContent: "space-between", gap: 20, marginBottom: 22, paddingBottom: 16, borderBottom: `0.5px solid ${C.border}` }}>
+          <div>
+            <div style={{ fontFamily: FM, fontSize: 10, letterSpacing: "0.14em", color: C.tealLight, fontWeight: 700, marginBottom: 8, textTransform: "uppercase" }}>
+              {view === "positions" ? "Account" : "Ledger"}
+            </div>
+            <h1 style={{ margin: 0, color: C.textPrimary, fontFamily: FD, fontSize: 30, lineHeight: 1.05, letterSpacing: "-0.02em", fontWeight: 600, display: "flex", alignItems: "center", gap: 12 }}>
+              {view === "positions" ? "Portfolio" : "Activity"}
+            </h1>
+            <div style={{ fontSize: 13, color: C.textSecondary, fontFamily: FS, marginTop: 8, maxWidth: 680, lineHeight: 1.55 }}>
+              {view === "positions"
+                ? "Your holdings, live mark-to-market value, and a clean P&L summary."
+                : "A chronological ledger of buys, exits, and note actions."}
+            </div>
+          </div>
+          <div className="pf-tabs">
+            {([
+              { id: "positions", label: "Holdings" },
+              { id: "history", label: "History" },
+            ] as const).map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setView(t.id)}
+                className={`pf-tab${view === t.id ? " active" : ""}`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {view === "history" ? (
+          <History walletAddress={appWalletAddress} connected={walletReady} />
+        ) : (
+          <>
+            {/* ── Calm account summary: total value + P&L, and a simple allocation list ── */}
+            <section className="pf-overview" aria-label="Portfolio account overview">
+              <div className="pf-panel" style={{ display: "grid", alignContent: "space-between" }}>
+                <div>
+                  <div style={{ color: C.textMuted, fontFamily: FM, fontSize: 9.5, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 12 }}>
+                    Net account value
+                  </div>
+                  <div style={{ color: C.textPrimary, fontFamily: FD, fontSize: 42, fontWeight: 600, letterSpacing: "-0.03em", lineHeight: 1, fontVariantNumeric: "tabular-nums" }}>
+                    {fmtUsd(displayTotal, 2)}
+                  </div>
+                  <div style={{ display: "inline-flex", alignItems: "center", gap: 7, marginTop: 12 }}>
+                    <span style={{ width: 7, height: 7, borderRadius: "50%", background: displayPnl >= 0 ? C.green : C.red }} />
+                    <span style={{ color: displayPnl >= 0 ? C.green : C.red, fontFamily: FM, fontSize: 13, fontVariantNumeric: "tabular-nums" }}>
+                      {displayPnl >= 0 ? "+" : ""}{fmtUsd(displayPnl, 2)}
+                    </span>
+                    <span style={{ color: C.textMuted, fontFamily: FM, fontSize: 11, letterSpacing: "0.04em" }}>
+                      unrealized P&amp;L · accrued yield
+                    </span>
+                  </div>
+                </div>
+
+                {walletReady && navChart && (
+                  <div style={{ margin: "16px 0 4px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 7 }}>
+                      <span style={{ color: C.textMuted, fontFamily: FM, fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase" }}>Value over time</span>
+                      <span style={{ color: C.textMuted, fontFamily: FM, fontSize: 9.5 }}>{navChart.flat ? "no realized change yet" : "realized \u00b7 since first settle"}</span>
+                    </div>
+                    <svg viewBox={`0 0 ${navChart.W} ${navChart.H}`} width="100%" height={navChart.H} preserveAspectRatio="none" style={{ display: "block" }}>
+                      <defs>
+                        <linearGradient id="pf-nav-fill" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor={navChart.up ? C.green : C.red} stopOpacity="0.16" />
+                          <stop offset="100%" stopColor={navChart.up ? C.green : C.red} stopOpacity="0" />
+                        </linearGradient>
+                      </defs>
+                      <path d={navChart.area} fill="url(#pf-nav-fill)" />
+                      <path d={navChart.line} fill="none" stroke={navChart.up ? C.green : C.red} strokeWidth="1.5" vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
+                    </svg>
+                  </div>
+                )}
+                <div className="pf-summary-metrics">
+                  <div>
+                    <div style={{ color: C.textMuted, fontFamily: FM, fontSize: 9.5, letterSpacing: "0.12em", textTransform: "uppercase" }}>Cash</div>
+                    <div style={{ color: C.textPrimary, fontFamily: FD, fontSize: 18, fontWeight: 600, marginTop: 7, fontVariantNumeric: "tabular-nums" }}>{fmtUsd(liveUsdc, 2)}</div>
+                  </div>
+                  <div>
+                    <div style={{ color: C.textMuted, fontFamily: FM, fontSize: 9.5, letterSpacing: "0.12em", textTransform: "uppercase" }}>Deployed</div>
+                    <div style={{ color: C.textPrimary, fontFamily: FD, fontSize: 18, fontWeight: 600, marginTop: 7, fontVariantNumeric: "tabular-nums" }}>{deployedPct.toFixed(0)}%</div>
+                  </div>
+                  <div>
+                    <div style={{ color: C.textMuted, fontFamily: FM, fontSize: 9.5, letterSpacing: "0.12em", textTransform: "uppercase" }}>Positions</div>
+                    <div style={{ color: C.textPrimary, fontFamily: FD, fontSize: 18, fontWeight: 600, marginTop: 7, fontVariantNumeric: "tabular-nums" }}>{positionCount}</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pf-panel">
+                <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 18, marginBottom: 4 }}>
+                  <div style={{ color: C.textMuted, fontFamily: FM, fontSize: 9.5, letterSpacing: "0.14em", textTransform: "uppercase" }}>
+                    Allocation
+                  </div>
+                  <div style={{ color: C.textSecondary, fontFamily: FM, fontSize: 12, fontVariantNumeric: "tabular-nums" }}>{fmtUsd(productTotal, 2)}</div>
+                </div>
+
+                <div style={{ display: "grid" }}>
+                  {productRows.map((row) => {
+                    const share = productTotal > 0 ? (row.value / productTotal) * 100 : 0;
+                    const content = (
+                      <>
+                        <div style={{ display: "grid", gridTemplateColumns: "10px minmax(0, 1fr)", gap: 12, alignItems: "center" }}>
+                          <span style={{ width: 8, height: 8, borderRadius: "50%", background: row.color, opacity: row.value > 0 ? 1 : 0.4 }} />
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ color: C.textPrimary, fontFamily: FD, fontSize: 13.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{row.label}</div>
+                            <div style={{ color: C.textMuted, fontFamily: FS, fontSize: 11, lineHeight: 1.35, marginTop: 2 }}>{row.description}</div>
+                          </div>
+                        </div>
+                        <div className="pf-spark">
+                          <span style={{ width: `${Math.max(1, Math.min(100, share))}%`, background: row.color, opacity: row.value > 0 ? 0.95 : 0.16 }} />
+                        </div>
+                        <div style={{ textAlign: "right" }}>
+                          <div style={{ color: C.textPrimary, fontFamily: FD, fontSize: 13.5, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{fmtUsd(row.value, 2)}</div>
+                          <div style={{ color: C.textMuted, fontFamily: FM, fontSize: 10, marginTop: 3 }}>{row.metaOverride ?? `${share.toFixed(1)}%`}</div>
+                        </div>
+                      </>
+                    );
+                    return row.href ? (
+                      <Link key={row.id} href={row.href} className="pf-alloc-row">{content}</Link>
+                    ) : (
+                      <div key={row.id} className="pf-alloc-row">{content}</div>
+                    );
+                  })}
+                </div>
+              </div>
+            </section>
+
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, margin: "0 0 12px" }}>
+              <div style={{ color: C.textMuted, fontFamily: FM, fontSize: 9.5, letterSpacing: "0.14em", textTransform: "uppercase" }}>
+                Open positions
+              </div>
+              {walletReady && positionCount > 0 && (
+                <div style={{ color: C.textMuted, fontFamily: FM, fontSize: 10.5, fontVariantNumeric: "tabular-nums" }}>
+                  {positionCount} held · sorted by value
+                </div>
+              )}
+            </div>
+
+            {/* Positions — sorted by value descending, USDC included */}
+            <div className="pf-positions">
+            {(() => {
+              if (!walletReady) {
+                return (
+                  <div className="pf-card" style={{ gridColumn: "1 / -1", textAlign: "center", padding: "34px 20px" }}>
+                    <div style={{ color: C.textPrimary, fontFamily: FD, fontSize: 17, fontWeight: 600, marginBottom: 6 }}>
+                      Connect a wallet to view balances
+                    </div>
+                    <div style={{ color: C.textSecondary, fontFamily: FS, fontSize: 13 }}>
+                      Portfolio data is pulled from the connected account and the Sui-backed backend indexer.
+                    </div>
+                  </div>
+                );
+              }
+
+              const rows: { value: number; el: React.ReactNode; key: string }[] = [];
+              const virtualGroups: GroupedVirtualPosition[] = virtualGroupsForWallet;
+              const virtualTokensByUuid = virtualGroups.reduce<Record<string, number>>(
+                (acc, g) => {
+                  acc[g.uuid] = (acc[g.uuid] ?? 0) + g.tokens;
+                  return acc;
+                },
+                {},
+              );
+              const uiBundleIdByUuid = virtualGroups.reduce<Record<string, { id: string; tokens: number }>>(
+                (acc, g) => {
+                  const prev = acc[g.uuid];
+                  if (!prev || g.tokens > prev.tokens) acc[g.uuid] = { id: g.uiBundleId, tokens: g.tokens };
+                  return acc;
+                },
+                {},
+              );
+
+              const deriveResidualLabel = (p: BasketPosition): { labelId: string; tier: 90 | 70 | 50; nav: number } | null => {
+                if (p.displayName && /^PBU-(HIGH|MID|LOW)-(SHORT|MED|LONG)$/.test(p.displayName)) {
+                  const live = basketState.status === "ok" ? basketState.baskets.find((b) => b.id === p.displayName) : null;
+                  const tier = live?.tier ?? p.tier;
+                  const nav = live?.nav ?? p.navHint;
+                  if (tier != null && nav != null) return { labelId: p.displayName, tier, nav };
+                }
+                const borrowed = uiBundleIdByUuid[p.bundleId];
+                if (borrowed) {
+                  const live = basketState.status === "ok" ? basketState.baskets.find((b) => b.id === borrowed.id) : null;
+                  const tier = live?.tier ?? p.tier;
+                  const nav = live?.nav ?? p.navHint;
+                  if (tier != null && nav != null) return { labelId: borrowed.id, tier, nav };
+                }
+                const tierGuess = p.tier;
+                if (tierGuess == null) return null;
+                if (basketState.status === "ok") {
+                  const candidates = basketState.baskets.filter((b) => b.tier === tierGuess);
+                  if (candidates.length) {
+                    const target = p.maturityAt;
+                    const pick = target == null
+                      ? candidates[0]
+                      : candidates
+                          .map((b) => {
+                            const bMaturity = b.daysLeft != null ? Date.now() + b.daysLeft * 86_400_000 : null;
+                            const diff = bMaturity == null ? Number.POSITIVE_INFINITY : Math.abs(bMaturity - target);
+                            return { b, diff };
+                          })
+                          .sort((a, z) => a.diff - z.diff)[0].b;
+                    return { labelId: pick.id, tier: pick.tier, nav: pick.nav };
+                  }
+                }
+                const seed = bundleById(`PBU-${tierGuess === 90 ? "HIGH" : tierGuess === 70 ? "MID" : "LOW"}-SHORT`);
+                if (seed) return { labelId: seed.id, tier: seed.tier, nav: p.navHint ?? seed.nav };
+                return null;
+              };
+
+              const renderBasketCard = (opts: {
+                cardKey: string;
+                uuid: string;
+                labelId: string;
+                qty: number;
+                avgCost: number;
+                nav: number;
+                tier: 90 | 70 | 50;
+                maturityAt?: number | null;
+                status?: string;
+              }) => {
+                const { cardKey, uuid, labelId, qty, avgCost, nav, tier, maturityAt, status } = opts;
+                const value = qty * avgCost;
+                const pnl = 0;
+                void nav;
+                const liveMatchById = basketState.status === "ok" ? basketState.baskets.find((b) => b.id === labelId) : null;
+                const liveMaturityMs = liveMatchById?.daysLeft != null ? Date.now() + liveMatchById.daysLeft * 86_400_000 : null;
+                const effectiveMaturityMs = liveMaturityMs ?? maturityAt ?? null;
+                const maturityDate = liveMatchById?.date
+                  ? liveMatchById.date
+                  : maturityAt
+                    ? (() => {
+                        const d = new Date(maturityAt);
+                        return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+                      })()
+                    : null;
+                // Anchor MATURED/countdown to the SAME local-midnight instant the
+                // DATE label renders, so a wallet west of UTC can't show
+                // "MATURES JUL 15" alongside "MATURED" (the raw UTC instant falls
+                // on the prior local evening). Falls back to the raw instant when
+                // the label is a pre-formatted string (live baskets carry daysLeft).
+                const localMaturityMs =
+                  maturityDate instanceof Date ? maturityDate.getTime() : effectiveMaturityMs;
+                const matured = status === "resolved" || (localMaturityMs != null && localMaturityMs <= renderNow);
+                const maturityLabel =
+                  typeof maturityDate === "string"
+                    ? maturityDate
+                    : maturityDate
+                      ? maturityDate.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
+                      : null;
+                const isBusy = redeemBusy === uuid;
+                const errMsg = redeemError[uuid];
+                const tierLabel = tier === 90 ? "High" : tier === 70 ? "Mid" : "Low";
+                const daysLeftMs =
+                  liveMatchById?.daysLeft != null
+                    ? liveMatchById.daysLeft * 86_400_000
+                    : localMaturityMs != null
+                      ? Math.max(0, localMaturityMs - renderNow)
+                      : null;
+                const closesInLabel =
+                  daysLeftMs == null
+                    ? null
+                    : daysLeftMs <= 0
+                      ? "Resolving now"
+                      : (() => {
+                          const d = Math.round(daysLeftMs / 86_400_000);
+                          if (d === 0) return "Closes today";
+                          if (d === 1) return "Closes in 1 day";
+                          return `Closes in ${d} days`;
+                        })();
+                const contextLine = closesInLabel ? `${tierLabel}-conviction · ${closesInLabel}` : `${tierLabel}-conviction basket`;
+                rows.push({
+                  key: cardKey,
+                  value,
+                  el: (
+                    <div key={cardKey} style={{ background: C.card, border: `0.5px solid ${C.border}`, borderRadius: 14, padding: 18 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 }}>
+                        <div style={{ fontSize: 9.5, color: C.tealLight, fontFamily: FM, letterSpacing: "0.12em" }}>MARKET BASKET</div>
+                        <Link href="/app/basket" style={{ fontSize: 11, color: C.teal, fontFamily: FS, textDecoration: "none" }}>View all →</Link>
+                      </div>
+                      <Link href={`/app/basket/${labelId}`} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", textDecoration: "none" }}>
+                        <div style={{ display: "flex", gap: 10, alignItems: "center", minWidth: 0 }}>
+                          <div style={{ width: 4, height: 24, borderRadius: 2, background: tc(tier), flexShrink: 0 }} />
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: C.textPrimary, fontFamily: FD }}>{labelId}</div>
+                            <div style={{ fontSize: 11, color: C.textSecondary, fontFamily: FS, marginTop: 2 }}>{contextLine}</div>
+                            {mode === "advanced" && (
+                              <div style={{ fontSize: 10.5, color: C.textMuted, fontFamily: FM, marginTop: 2, fontVariantNumeric: "tabular-nums" }}>{(qty ?? 0).toFixed(2)} units · avg ${(avgCost ?? 0).toFixed(3)}</div>
+                            )}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: "right", flexShrink: 0 }}>
+                          <div style={{ fontSize: 14, color: C.textPrimary, fontFamily: FD, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{fmtUsd(value, 2)}</div>
+                          <div style={{ fontSize: 11, color: pnl >= 0 ? C.green : C.red, fontFamily: FM, marginTop: 2 }}>{pnl >= 0 ? "+" : ""}{fmtUsd(pnl, 2)}</div>
+                        </div>
+                      </Link>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 12, paddingTop: 12, borderTop: `0.5px solid ${C.border}` }}>
+                        <div style={{ fontSize: 10, color: matured ? C.green : C.textMuted, fontFamily: FM, letterSpacing: "0.06em" }}>
+                          {matured ? "MATURED" : maturityLabel ? `MATURES ${maturityLabel.toUpperCase()}` : "MATURITY UNKNOWN"}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleRedeem(uuid, labelId, qty)}
+                          disabled={isBusy || !walletReady}
+                          title={matured ? "Redeem at maturity" : "Exit this position early — pro-rata payout, small exit fee"}
+                          style={redeemBtn(C.teal, C.tealLight, isBusy, walletReady)}
+                        >
+                          {isBusy ? "Redeeming…" : "Redeem"}
+                        </button>
+                      </div>
+                      {errMsg && <div style={{ marginTop: 10, fontSize: 11, fontFamily: FS, color: C.red }}>{errMsg}</div>}
+                    </div>
+                  ),
+                });
+              };
+
+              virtualGroups.forEach((g) => {
+                const liveMatch = basketState.status === "ok" ? basketState.baskets.find((b) => b.id === g.uiBundleId) : null;
+                const dbMatch = state.basketPositions.find((p) => p.bundleId === g.uuid);
+                const tier = liveMatch?.tier ?? dbMatch?.tier;
+                const nav = liveMatch?.nav ?? dbMatch?.navHint;
+                if (tier == null || nav == null) return;
+                const onchainForUuid = onchainTokensByUuid[g.uuid] ?? 0;
+                if (onchainForUuid <= 0.000001) return;
+                const totalVirtualForUuid = virtualTokensByUuid[g.uuid] ?? 0;
+                const share = totalVirtualForUuid > 0 ? g.tokens / totalVirtualForUuid : 1;
+                const effectiveQty = Math.min(g.tokens, onchainForUuid * share);
+                if (effectiveQty <= 0.000001) return;
+                renderBasketCard({
+                  cardKey: `${g.uuid}::${g.uiBundleId}`,
+                  uuid: g.uuid,
+                  labelId: g.uiBundleId,
+                  qty: effectiveQty,
+                  avgCost: g.tokens > 1e-9 && g.depositedUsdc > 0 ? g.depositedUsdc / g.tokens : g.avgNavAtDeposit,
+                  nav,
+                  tier,
+                  maturityAt: dbMatch?.maturityAt,
+                  status: dbMatch?.status,
+                });
+              });
+
+              const residualByBundle = new Map<string, BasketPosition>();
+              state.basketPositions.forEach((p) => {
+                const existing = residualByBundle.get(p.bundleId);
+                if (existing) residualByBundle.set(p.bundleId, { ...existing, qty: existing.qty + p.qty });
+                else residualByBundle.set(p.bundleId, p);
+              });
+              residualByBundle.forEach((p) => {
+                const onchainForUuid = onchainTokensByUuid[p.bundleId] ?? 0;
+                if (onchainForUuid <= 0.000001) return;
+                const virtualQty = virtualTokensByUuid[p.bundleId] ?? 0;
+                const coveredByVirtual = Math.min(virtualQty, onchainForUuid);
+                const residual = onchainForUuid - coveredByVirtual;
+                if (residual <= 0.001) return;
+                const catalogMatch = resolveBasket(p.bundleId);
+                let tier: 90 | 70 | 50 | undefined;
+                let nav: number | undefined;
+                let labelId: string;
+                if (catalogMatch) {
+                  tier = catalogMatch.tier;
+                  nav = catalogMatch.nav;
+                  labelId = catalogMatch.id;
+                } else {
+                  const derived = deriveResidualLabel(p);
+                  if (!derived) return;
+                  tier = derived.tier;
+                  nav = derived.nav;
+                  labelId = derived.labelId;
+                }
+                if (tier == null || nav == null) return;
+                renderBasketCard({
+                  cardKey: `${p.bundleId}::residual`,
+                  uuid: p.bundleId,
+                  labelId,
+                  qty: residual,
+                  avgCost: p.avgCost && p.avgCost > 0 ? p.avgCost : nav,
+                  nav,
+                  tier,
+                  maturityAt: p.maturityAt,
+                  status: p.status,
+                });
+              });
+
+              effectiveTranches.forEach((p, i) => {
+                const principal = p.qty * p.avgCost;
+                const trancheAccrued =
+                  p.apy != null && p.createdAt != null && p.maturityDays != null
+                    ? principal * (p.apy / 100 / 365) * Math.min(Math.max(0, (renderNow - p.createdAt) / 86_400_000), p.maturityDays)
+                    : 0;
+                const value = principal + trancheAccrued;
+                const rowKey = `tranche-${p.vaultId ?? `${p.bundleId}-${p.kind}-${i}`}`;
+                const matured = p.maturityAt != null ? p.maturityAt <= renderNow : false;
+                const isBusy = redeemBusy === rowKey;
+                const errMsg = redeemError[rowKey];
+                const maturityLabel = p.maturityAt
+                  ? new Date(p.maturityAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
+                  : null;
+                rows.push({
+                  key: rowKey,
+                  value,
+                  el: (
+                    <div key={rowKey} style={{ background: C.card, border: `0.5px solid ${C.border}`, borderRadius: 14, padding: 18 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 }}>
+                        <div style={{ fontSize: 9.5, color: C.amber, fontFamily: FM, letterSpacing: "0.12em" }}>RISK SLICE</div>
+                        <Link href="/app/tranche" style={{ fontSize: 11, color: C.teal, fontFamily: FS, textDecoration: "none" }}>View all →</Link>
+                      </div>
+                      <Link href={`/app/tranche/${p.bundleName ?? p.bundleId}?tier=${p.kind}`} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", textDecoration: "none" }}>
+                        <div style={{ display: "flex", gap: 10, alignItems: "center", minWidth: 0 }}>
+                          <div style={{ width: 4, height: 24, borderRadius: 2, background: trancheColor(p.kind), flexShrink: 0 }} />
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: C.textPrimary, fontFamily: FD, textTransform: "capitalize" }}>{p.bundleName ?? p.bundleId} · {p.kind}</div>
+                            {mode === "advanced" && (
+                              <div style={{ fontSize: 10.5, color: C.textMuted, fontFamily: FM, marginTop: 2, fontVariantNumeric: "tabular-nums" }}>{(p.qty ?? 0).toFixed(2)} units · issued ${(p.avgCost ?? 0).toFixed(2)}</div>
+                            )}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: "right", flexShrink: 0 }}>
+                          <div style={{ fontSize: 14, color: C.textPrimary, fontFamily: FD, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{fmtUsd(value, 2)}</div>
+                          {trancheAccrued > 0 && <div style={{ fontSize: 11, color: C.green, fontFamily: FM, marginTop: 2 }}>+{fmtUsd(trancheAccrued, 2)}</div>}
+                        </div>
+                      </Link>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 12, paddingTop: 12, borderTop: `0.5px solid ${C.border}` }}>
+                        <div style={{ fontSize: 10, color: matured ? C.green : C.textMuted, fontFamily: FM, letterSpacing: "0.06em" }}>
+                          {matured ? "MATURED" : maturityLabel ? `MATURES ${maturityLabel.toUpperCase()}` : "MATURITY UNKNOWN"}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleRedeemPpn(rowKey, {
+                              vaultIds: p.allVaultIds?.length ? p.allVaultIds : p.vaultId ? [p.vaultId] : undefined,
+                              bundleId: p.bundleId,
+                            })
+                          }
+                          disabled={isBusy || !walletReady || !matured}
+                          title={matured ? "Redeem at maturity" : "Locked until maturity; use the Risk Slices sell desk for an early exit quote"}
+                          style={redeemBtn(C.amber, C.amber, isBusy, walletReady && matured)}
+                        >
+                          {isBusy ? "Redeeming…" : matured ? "Redeem" : "Locked"}
+                        </button>
+                      </div>
+                      {errMsg && <div style={{ marginTop: 10, fontSize: 11, fontFamily: FS, color: C.red }}>{errMsg}</div>}
+                    </div>
+                  ),
+                });
+              });
+
+              effectivePpnVaults.forEach((v) => {
+                const principal = Number.isFinite(v.principal) ? v.principal : 0;
+                const apy = Number.isFinite(v.apy) ? v.apy : 0;
+                const hasTerm = Number.isFinite(v.createdAt) && Number.isFinite(v.maturityDays);
+                const elapsed = hasTerm ? Math.max(0, (renderNow - v.createdAt) / 86_400_000) : 0;
+                const accrued = hasTerm ? principal * (apy / 100 / 365) * Math.min(elapsed, v.maturityDays) : 0;
+                const value = principal + accrued;
+                const rowKey = `ppn-${v.id}`;
+                const maturityMs = hasTerm ? v.createdAt + v.maturityDays * 86_400_000 : null;
+                const matured = maturityMs != null ? maturityMs <= renderNow : false;
+                const isBusy = redeemBusy === rowKey;
+                const errMsg = redeemError[rowKey];
+                const maturityLabel = maturityMs != null
+                  ? new Date(maturityMs).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
+                  : null;
+                rows.push({
+                  key: rowKey,
+                  value,
+                  el: (
+                    <div key={rowKey} style={{ background: C.card, border: `0.5px solid ${C.border}`, borderRadius: 14, padding: 18 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 }}>
+                        <div style={{ fontSize: 9.5, color: C.violet, fontFamily: FM, letterSpacing: "0.12em" }}>PROTECTED NOTE</div>
+                        <Link href="/app/ppn" style={{ fontSize: 11, color: C.violet, fontFamily: FS, textDecoration: "none" }}>View all →</Link>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0" }}>
+                        <div style={{ display: "flex", gap: 10, alignItems: "center", minWidth: 0 }}>
+                          <div style={{ width: 4, height: 24, borderRadius: 2, background: C.violet, flexShrink: 0 }} />
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: C.textPrimary, fontFamily: FD }}>{v.bundleId}</div>
+                            <div style={{ fontSize: 10.5, color: C.textMuted, fontFamily: FM, marginTop: 2, fontVariantNumeric: "tabular-nums" }}>{hasTerm ? `${apy.toFixed(2)}% APY · ${Math.round(v.maturityDays)}d maturity` : "PLP floor-targeted note"}</div>
+                          </div>
+                        </div>
+                        <div style={{ textAlign: "right", flexShrink: 0 }}>
+                          <div style={{ fontSize: 14, color: C.textPrimary, fontFamily: FD, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{fmtUsd(value, 2)}</div>
+                          {accrued > 0 && <div style={{ fontSize: 11, color: C.green, fontFamily: FM, marginTop: 2 }}>+{fmtUsd(accrued, 2)}</div>}
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 12, paddingTop: 12, borderTop: `0.5px solid ${C.border}` }}>
+                        <div style={{ fontSize: 10, color: matured ? C.green : C.textMuted, fontFamily: FM, letterSpacing: "0.06em" }}>
+                          {matured ? "MATURED" : maturityLabel ? `MATURES ${maturityLabel.toUpperCase()}` : "MATURITY UNKNOWN"}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleRedeemPpn(rowKey, { vaultIds: v.allVaultIds ?? [v.id], bundleId: v.bundleId })}
+                          disabled={isBusy || !walletReady || !matured}
+                          title={matured ? "Redeem at maturity" : "Locked until maturity"}
+                          style={redeemBtn(C.violet, C.violet, isBusy, walletReady && matured)}
+                        >
+                          {isBusy ? "Redeeming…" : matured ? "Redeem" : "Locked"}
+                        </button>
+                      </div>
+                      {errMsg && <div style={{ marginTop: 10, fontSize: 11, fontFamily: FS, color: C.red }}>{errMsg}</div>}
+                    </div>
+                  ),
+                });
+              });
+
+              effectiveDistPositions.forEach((p) => {
+                const collateral = Number.isFinite(p.collateral_usdc) ? p.collateral_usdc : 0;
+                const maxProfit = Number.isFinite(p.max_profit_usdc) ? p.max_profit_usdc : 0;
+                const rowKey = `dist-${p.id}`;
+                rows.push({
+                  key: rowKey,
+                  value: collateral,
+                  el: (
+                    <div key={rowKey} style={{ background: C.card, border: `0.5px solid ${C.border}`, borderRadius: 14, padding: 18 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 }}>
+                        <div style={{ fontSize: 9.5, color: C.coral, fontFamily: FM, letterSpacing: "0.12em" }}>DISTRIBUTION MARKET</div>
+                        <Link href="/app/distribution" style={{ fontSize: 11, color: C.coral, fontFamily: FS, textDecoration: "none" }}>View all →</Link>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0" }}>
+                        <div style={{ display: "flex", gap: 10, alignItems: "center", minWidth: 0 }}>
+                          <div style={{ width: 4, height: 24, borderRadius: 2, background: C.coral, flexShrink: 0 }} />
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: C.textPrimary, fontFamily: FD, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.question}</div>
+                            <div style={{ fontSize: 10.5, color: C.textMuted, fontFamily: FM, marginTop: 2, fontVariantNumeric: "tabular-nums" }}>μ {Math.round(p.target_mu)} · σ {Math.round(p.target_sigma)} · max {fmtUsd(maxProfit, 2)}</div>
+                          </div>
+                        </div>
+                        <div style={{ textAlign: "right", flexShrink: 0 }}>
+                          <div style={{ fontSize: 14, color: C.textPrimary, fontFamily: FD, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{fmtUsd(collateral, 2)}</div>
+                          <div style={{ fontSize: 10, color: C.textMuted, fontFamily: FM, marginTop: 2 }}>at risk</div>
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 12, paddingTop: 12, borderTop: `0.5px solid ${C.border}` }}>
+                        <div style={{ fontSize: 10, color: C.textMuted, fontFamily: FM, letterSpacing: "0.06em" }}>OPEN · CONTINUOUS</div>
+                        {/* No settle action exists for continuous positions (there is no
+                            open path on this rail), so the prior "Settle →" link was dead —
+                            it only re-navigated here. Show an honest, non-clickable status
+                            instead of a button that implies an action the UI can't perform. */}
+                        <div style={{ fontSize: 10, color: C.textMuted, fontFamily: FM, letterSpacing: "0.06em" }}>SETTLES AT EXPIRY</div>
+                      </div>
+                    </div>
+                  ),
+                });
+              });
+
+              if (yieldAccount && yieldAccount.total_value_usd > 0) {
+                rows.push({
+                  key: "deepbook-account",
+                  value: yieldAccount.total_value_usd,
+                  el: (
+                    <div key="deepbook-account" style={{ background: C.card, border: `0.5px solid ${C.border}`, borderRadius: 14, padding: 18 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 }}>
+                        <div style={{ fontSize: 9.5, color: C.green, fontFamily: FM, letterSpacing: "0.12em" }}>DEEPBOOK ACCOUNT · dUSDC</div>
+                        <Link href="/app/deepbook" style={{ fontSize: 11, color: C.green, fontFamily: FS, textDecoration: "none" }}>Manage →</Link>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", gap: 14 }}>
+                        <div style={{ display: "flex", gap: 10, alignItems: "center", minWidth: 0 }}>
+                          <div style={{ width: 4, height: 24, borderRadius: 2, background: C.green, flexShrink: 0 }} />
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: C.textPrimary, fontFamily: FD }}>On-chain Structured Account</div>
+                            <div style={{ fontSize: 10.5, color: C.textMuted, fontFamily: FM, marginTop: 2, fontVariantNumeric: "tabular-nums" }}>{yieldAccount.shares.toFixed(4)} PLP · {yieldAccount.range_position_count} range{yieldAccount.range_position_count === 1 ? "" : "s"}</div>
+                          </div>
+                        </div>
+                        <div style={{ textAlign: "right", flexShrink: 0 }}>
+                          <div style={{ fontSize: 14, color: C.textPrimary, fontFamily: FD, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{fmtUsd(yieldAccount.total_value_usd, 2)}</div>
+                          <div style={{ fontSize: 10, color: C.textMuted, fontFamily: FM, marginTop: 2 }}>PLP NAV + range bids + idle</div>
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 12, paddingTop: 12, borderTop: `0.5px solid ${C.border}` }}>
+                        <div style={{ fontSize: 10, color: yieldAccount.range_mark_status === "unavailable" ? C.amber : C.textMuted, fontFamily: FM, letterSpacing: "0.06em" }}>{yieldAccount.range_mark_status === "unavailable" ? "PARTIAL RANGE MARK" : `${fmtUsd(yieldAccount.range_bid_value_usd, 2)} RANGE BID`}</div>
+                        <div style={{ fontSize: 10, color: C.green, fontFamily: FM, letterSpacing: "0.06em" }}>{fmtUsd(yieldAccount.manager_idle_usd, 2)} IDLE · {fmtUsd(yieldAccount.available_pool_liquidity_usd, 2)} POOL LIQUIDITY</div>
+                      </div>
+                    </div>
+                  ),
+                });
+              }
+
+              openSimPositions.forEach((p) => {
+                const rowKey = `sim-${p.sim_id}`;
+                const prodLabel = ({ strip: "DEEPBOOK STRIP", option: "OPTION", vol: "VOLATILITY", dist: "DISTRIBUTION", yield: "RANGE YIELD", note: "STRUCTURED NOTE" } as Record<string, string>)[p.product] ?? "POSITION";
+                const isCapitalProduct = p.product === "yield" || p.product === "note";
+                const reconciling = p.status === "settling";
+                const scheduleMinimum = p.bands.length > 0 ? Math.min(...p.bands.map((band) => band.payout_usd)) : null;
+                const rowColor = p.product === "yield" ? C.green : p.product === "note" ? C.violet : C.blue;
+                rows.push({
+                  key: rowKey,
+                  value: p.premium_usd,
+                  el: (
+                    <div key={rowKey} style={{ background: C.card, border: `0.5px solid ${C.border}`, borderRadius: 14, padding: 18 }}>
+                      <div style={{ fontSize: 9.5, color: rowColor, fontFamily: FM, letterSpacing: "0.12em", marginBottom: 12 }}>{prodLabel} · mUSDC</div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0" }}>
+                        <div style={{ display: "flex", gap: 10, alignItems: "center", minWidth: 0 }}>
+                          <div style={{ width: 4, height: 24, borderRadius: 2, background: rowColor, flexShrink: 0 }} />
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: C.textPrimary, fontFamily: FD, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</div>
+                            <div style={{ fontSize: 10.5, color: C.textMuted, fontFamily: FM, marginTop: 2, fontVariantNumeric: "tabular-nums" }}>{isCapitalProduct ? "capital" : "premium"} {fmtUsd(p.premium_usd, 2)} · max {fmtUsd(p.max_payout_usd, 2)} mUSDC</div>
+                          </div>
+                        </div>
+                        <div style={{ textAlign: "right", flexShrink: 0 }}>
+                          <div style={{ fontSize: 14, color: C.textPrimary, fontFamily: FD, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{fmtUsd(p.premium_usd, 2)}</div>
+                          <div style={{ fontSize: 10, color: C.textMuted, fontFamily: FM, marginTop: 2 }}>{isCapitalProduct && scheduleMinimum != null ? `schedule min ${fmtUsd(scheduleMinimum, 2)}` : p.autocall_terms ? "final KI downside" : "at risk"}</div>
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 12, paddingTop: 12, borderTop: `0.5px solid ${C.border}` }}>
+                        <div style={{ fontSize: 10, color: reconciling ? C.amber : C.textMuted, fontFamily: FM, letterSpacing: "0.06em" }}>{reconciling ? "SETTLEMENT RECONCILIATION · mUSDC" : "OPEN · mUSDC"}</div>
+                        {(() => {
+                          const firstObservation = p.autocall_terms?.observations?.[0]?.observation_ms ?? null;
+                          const unlockAt = firstObservation ?? p.expiry_ms;
+                          const locked = unlockAt != null && Date.now() < unlockAt;
+                          const disabled = simBusy === p.sim_id || locked || reconciling;
+                          return (
+                            <button onClick={() => settleSimPosition(p.sim_id)} disabled={disabled} title={locked && unlockAt != null ? `${firstObservation ? "First observation" : "Settles at expiry"} · ${new Date(unlockAt).toLocaleString()}` : undefined} style={{ padding: "7px 16px", fontSize: 12, fontFamily: FD, fontWeight: 500, letterSpacing: "0.02em", borderRadius: 8, border: `0.5px solid ${reconciling ? C.amber : rowColor}`, background: `${reconciling ? C.amber : rowColor}24`, color: reconciling ? C.amber : rowColor, cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.6 : 1 }}>{reconciling ? "Reconciling" : simBusy === p.sim_id ? "Settling…" : locked ? (firstObservation ? "Locked until observation" : "Locked until expiry") : (firstObservation ? "Check observation" : "Settle →")}</button>
+                          );
+                        })()}
+                      </div>
+                      {simError[p.sim_id] && (
+                        <div style={{ marginTop: 10, fontSize: 11, fontFamily: FM, color: C.red, lineHeight: 1.45 }}>{simError[p.sim_id]}</div>
+                      )}
+                    </div>
+                  ),
+                });
+              });
+
+              if (liveUsdc > 0) {
+                rows.push({
+                  key: "usdc",
+                  value: liveUsdc,
+                  el: (
+                    <div key="usdc" style={{ background: C.card, border: `0.5px solid ${C.border}`, borderRadius: 14, padding: 18 }}>
+                      <div style={{ fontSize: 9.5, color: C.textMuted, fontFamily: FM, letterSpacing: "0.12em", marginBottom: 12 }}>CASH</div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0" }}>
+                        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                          <div style={{ width: 4, height: 24, borderRadius: 2, background: "#4a5a6a" }} />
+                          <div>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: C.textPrimary, fontFamily: FD }}>USDC</div>
+                            <div style={{ fontSize: 10.5, color: C.textMuted, fontFamily: FM, marginTop: 2, fontVariantNumeric: "tabular-nums" }}>{fmtUsd(liveMusdc, 2)} mUSDC + {fmtUsd(liveDusdc, 2)} dUSDC · separate testnet rails</div>
+                          </div>
+                        </div>
+                        <div style={{ fontSize: 14, color: C.textPrimary, fontFamily: FD, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{fmtUsd(liveUsdc, 2)}</div>
+                      </div>
+                    </div>
+                  ),
+                });
+              }
+
+              rows.sort((a, b) => b.value - a.value);
+              if (rows.length === 0) {
+                return (
+                  <div className="pf-card" style={{ gridColumn: "1 / -1", textAlign: "center", padding: "34px 20px" }}>
+                    <div style={{ color: C.textPrimary, fontFamily: FD, fontSize: 17, fontWeight: 600, marginBottom: 6 }}>
+                      No open positions yet
+                    </div>
+                    <div style={{ color: C.textSecondary, fontFamily: FS, fontSize: 13 }}>
+                      New market baskets, risk slices, and protected notes will appear here after execution.
+                    </div>
+                  </div>
+                );
+              }
+              return rows.map((r) => r.el);
+            })()}
+            </div>
+          </>
+        )}
+      </PageFrame>
+    </>
+  );
+}
+
+// Shared redeem-button style. Accent border + tinted fill when actionable.
+function redeemBtn(border: string, text: string, isBusy: boolean, walletReady: boolean): React.CSSProperties {
+  const live = !isBusy && walletReady;
+  return {
+    padding: "7px 16px",
+    fontSize: 12,
+    fontFamily: FD,
+    fontWeight: 500,
+    letterSpacing: "0.02em",
+    borderRadius: 8,
+    cursor: live ? "pointer" : "not-allowed",
+    border: `0.5px solid ${live ? border : "rgba(255,255,255,0.08)"}`,
+    background: live ? `${border}1f` : "transparent",
+    color: live ? text : C.textMuted,
+    opacity: isBusy ? 0.6 : 1,
+    transition: `all 0.15s ${EASE}`,
+  };
+}

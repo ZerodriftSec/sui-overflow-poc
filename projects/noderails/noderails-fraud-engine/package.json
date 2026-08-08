@@ -1,0 +1,19 @@
+{
+  "name": "noderails-fraud-engine",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Wallet risk & compliance signals via GoldRush (Covalent) — Sui-first, multi-chain capable",
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node --env-file=.env dist/server.js",
+    "assess": "node --env-file=.env dist/cli.js"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "typescript": "^5.4.0"
+  }
+}

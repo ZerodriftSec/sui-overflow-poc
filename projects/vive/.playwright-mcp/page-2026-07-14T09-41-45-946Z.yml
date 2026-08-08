@@ -1,0 +1,204 @@
+- generic [ref=e3]:
+  - navigation [ref=e4]:
+    - generic [ref=e5]:
+      - link "Vive" [ref=e6] [cursor=pointer]:
+        - /url: "#"
+      - generic [ref=e10]:
+        - link "Workflow" [ref=e11] [cursor=pointer]:
+          - /url: "#workflow"
+        - link "Studio" [ref=e12] [cursor=pointer]:
+          - /url: "#studio"
+        - link "Showcase" [ref=e13] [cursor=pointer]:
+          - /url: "#showcase"
+        - link "Capabilities" [ref=e14] [cursor=pointer]:
+          - /url: "#capabilities"
+      - button "Launch Studio" [ref=e17]
+  - main [ref=e22]:
+    - generic [ref=e25]:
+      - generic [ref=e26]:
+        - heading "Vive" [level=1] [ref=e27]
+        - paragraph [ref=e28]: An AI production studio for short-form video. Plan every beat, approve every frame, and export platform-ready reels — with agents that iterate inside your workflow, not around it.
+      - generic [ref=e29]:
+        - generic [ref=e30]:
+          - generic [ref=e31]: Describe your video idea
+          - textbox "Describe your video idea" [ref=e32]:
+            - /placeholder: Describe your video — e.g. a 30s product reel with cinematic lighting
+          - button "Create" [ref=e34]
+        - button "Unmute video" [ref=e39]
+    - generic [ref=e47]:
+      - generic [ref=e48]: Instagram Reels
+      - generic [ref=e53]: TikTok
+      - generic [ref=e56]: YouTube Shorts
+      - generic [ref=e59]: Product demos
+      - generic [ref=e60]: Brand stories
+      - generic [ref=e61]: Tutorial clips
+      - generic [ref=e62]: Launch teasers
+      - generic [ref=e63]: Social hooks
+      - generic [ref=e64]: Instagram Reels
+      - generic [ref=e69]: TikTok
+      - generic [ref=e72]: YouTube Shorts
+      - generic [ref=e75]: Product demos
+      - generic [ref=e76]: Brand stories
+      - generic [ref=e77]: Tutorial clips
+      - generic [ref=e78]: Launch teasers
+      - generic [ref=e79]: Social hooks
+    - generic [ref=e81]:
+      - generic [ref=e82]:
+        - generic [ref=e83]:
+          - paragraph [ref=e84]: Showcase
+          - heading "Built for the formats creators ship every day" [level=2] [ref=e85]
+        - paragraph [ref=e86]: Reels, TikToks, and Shorts — same studio, same approval flow, export-ready deliverables.
+      - generic [ref=e87]:
+        - article [ref=e88]:
+          - generic [ref=e92]:
+            - generic [ref=e93]: Script → Film
+            - heading "Product launch reels" [level=3] [ref=e94]
+        - article [ref=e95]:
+          - generic [ref=e99]:
+            - generic [ref=e100]: Storyboard-led
+            - heading "Tutorial explainers" [level=3] [ref=e101]
+        - article [ref=e102]:
+          - generic [ref=e106]:
+            - generic [ref=e107]: Multi-scene
+            - heading "Brand campaigns" [level=3] [ref=e108]
+        - article [ref=e109]:
+          - generic [ref=e113]:
+            - generic [ref=e114]: Fast iteration
+            - heading "Social hooks" [level=3] [ref=e115]
+    - generic [ref=e117]:
+      - generic [ref=e118]:
+        - paragraph [ref=e119]: Workflow
+        - heading "Four phases. Zero guesswork." [level=2] [ref=e120]
+        - paragraph [ref=e121]: Advance only when you approve. Agents work inside each phase — revising one beat, one shot, or one clip at a time.
+      - list [ref=e124]:
+        - listitem [ref=e125]:
+          - generic [ref=e126]: "01"
+          - heading "Script" [level=3] [ref=e132]
+          - paragraph [ref=e133]: Structure hooks, narration, and pacing beat by beat.
+        - listitem [ref=e134]:
+          - generic [ref=e135]: "02"
+          - heading "Design" [level=3] [ref=e144]
+          - paragraph [ref=e145]: Define characters, environments, and visual style for the reel.
+        - listitem [ref=e146]:
+          - generic [ref=e147]: "03"
+          - heading "Storyboard" [level=3] [ref=e154]
+          - paragraph [ref=e155]: Plan every shot and frame before generating video.
+        - listitem [ref=e156]:
+          - generic [ref=e157]: "04"
+          - heading "Film" [level=3] [ref=e162]
+          - paragraph [ref=e163]: Generate video clips from your storyboard frames and approve every take.
+    - generic [ref=e165]:
+      - generic [ref=e166]:
+        - paragraph [ref=e167]: The studio
+        - heading "A production workspace, not another chat box" [level=2] [ref=e168]: A production workspace,not another chat box
+      - generic [ref=e170]:
+        - generic [ref=e171]:
+          - generic [ref=e172]: Summer Launch Reel
+          - generic [ref=e173]: Saved · 2m ago
+        - generic [ref=e174]:
+          - generic [ref=e175]:
+            - generic [ref=e176]: Assets
+            - generic [ref=e178]:
+              - generic [ref=e179]:
+                - generic [ref=e180]:
+                  - generic [ref=e181]: ▾
+                  - generic [ref=e182]: Scripts
+                  - generic [ref=e183]: "2"
+                - generic [ref=e184]: Summer Launch Reel
+                - generic [ref=e185]: Product Demo v2
+              - generic [ref=e187]:
+                - generic [ref=e188]: ▸
+                - generic [ref=e189]: Characters
+                - generic [ref=e190]: "3"
+              - generic [ref=e192]:
+                - generic [ref=e193]: ▸
+                - generic [ref=e194]: Environments
+                - generic [ref=e195]: "1"
+              - generic [ref=e197]:
+                - generic [ref=e198]: ▸
+                - generic [ref=e199]: Storyboard
+                - generic [ref=e200]: "4"
+              - generic [ref=e202]:
+                - generic [ref=e203]: ▸
+                - generic [ref=e204]: Video Clips
+                - generic [ref=e205]: "0"
+          - generic [ref=e206]:
+            - generic [ref=e207]: Summer Launch Reel
+            - generic [ref=e210]:
+              - paragraph [ref=e211]: HOOK (0–3s)
+              - paragraph [ref=e212]: What if your next launch video took an afternoon, not a week?
+              - paragraph [ref=e214]: PROBLEM (3–11s)
+              - paragraph [ref=e215]: Most teams bounce between docs, storyboards, and five different AI tools.
+              - paragraph [ref=e217]: DEMO (11–23s)
+              - paragraph [ref=e218]: Plan beats, approve frames, and export — all in one studio.
+          - generic [ref=e219]:
+            - generic [ref=e220]:
+              - generic [ref=e221]: Text
+              - generic [ref=e222]: Image
+              - generic [ref=e223]: Video
+            - generic [ref=e224]:
+              - generic [ref=e225]:
+                - generic [ref=e226]: Tighten the hook — lead with the outcome, not the feature list.
+                - generic [ref=e227]: Revised opening line with a stronger outcome-first hook.
+              - generic [ref=e228]: Ask or edit the selected asset…
+    - generic [ref=e230]:
+      - generic [ref=e231]:
+        - paragraph [ref=e232]: Capabilities
+        - heading "Professional speed. Human judgment." [level=2] [ref=e233]
+      - generic [ref=e234]:
+        - article [ref=e235]:
+          - heading "Creative control" [level=3] [ref=e238]
+          - paragraph [ref=e239]: Edit any field directly or ask an agent to revise a single item. Skills and playbooks stay visible — never buried in system prompts.
+          - list [ref=e240]:
+            - listitem [ref=e241]: Approval gates at every phase
+            - listitem [ref=e243]: Per-beat and per-shot revision
+            - listitem [ref=e245]: Draft, approved, and stale states
+        - article [ref=e247]:
+          - heading "Intelligent iteration" [level=3] [ref=e252]
+          - paragraph [ref=e253]: Agents plan, generate, critique, and refine autonomously within each phase. Pick any model per step — scripting, visuals, or critique.
+          - list [ref=e254]:
+            - listitem [ref=e255]: 300+ models via OpenRouter
+            - listitem [ref=e257]: Autonomous loops with human checkpoints
+            - listitem [ref=e259]: Search across project history
+        - article [ref=e261]:
+          - heading "Persistent studio" [level=3] [ref=e267]
+          - paragraph [ref=e268]: Projects, skills, and every revision live in your Walrus vault — Seal-encrypted and wallet-gated. Sync across sessions without losing a beat.
+          - list [ref=e269]:
+            - listitem [ref=e270]: Reusable skills and playbooks
+            - listitem [ref=e272]: Versioned artifact library
+            - listitem [ref=e274]: You own every export
+    - generic [ref=e281]:
+      - heading "Start your next reel" [level=2] [ref=e282]
+      - paragraph [ref=e283]: Open the studio, describe your idea, and work through each phase at your own pace.
+      - button "Launch Studio" [ref=e286]
+  - contentinfo [ref=e291]:
+    - generic [ref=e292]:
+      - generic [ref=e293]:
+        - generic [ref=e294]:
+          - generic [ref=e295]: Vive
+          - paragraph [ref=e298]: Director-grade AI studio for short-form video production. From first idea to final export.
+        - generic [ref=e299]:
+          - paragraph [ref=e300]: Product
+          - list [ref=e301]:
+            - listitem [ref=e302]:
+              - link "Workflow" [ref=e303] [cursor=pointer]:
+                - /url: "#workflow"
+            - listitem [ref=e304]:
+              - link "Studio" [ref=e305] [cursor=pointer]:
+                - /url: "#studio"
+            - listitem [ref=e306]:
+              - link "Showcase" [ref=e307] [cursor=pointer]:
+                - /url: "#showcase"
+            - listitem [ref=e308]:
+              - link "Capabilities" [ref=e309] [cursor=pointer]:
+                - /url: "#capabilities"
+        - generic [ref=e310]:
+          - paragraph [ref=e311]: Resources
+          - list [ref=e312]:
+            - listitem [ref=e313]:
+              - link "Walrus" [ref=e314] [cursor=pointer]:
+                - /url: https://docs.wal.app
+            - listitem [ref=e315]:
+              - link "Sui" [ref=e316] [cursor=pointer]:
+                - /url: https://sui.io
+      - paragraph [ref=e318]: © 2026 Vive. All rights reserved.

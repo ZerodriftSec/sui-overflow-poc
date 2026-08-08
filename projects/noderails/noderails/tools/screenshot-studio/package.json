@@ -1,0 +1,17 @@
+{
+  "name": "@noderails/screenshot-studio",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "capture": "node run.mjs",
+    "capture:dashboard": "SCENARIO=scenarios/dashboard.json node run.mjs",
+    "capture:admin": "SCENARIO=scenarios/admin.json node run.mjs",
+    "capture:landing": "SCENARIO=scenarios/landing.json node run.mjs",
+    "capture:payment-ui": "SCENARIO=scenarios/payment-ui.json node run.mjs",
+    "install:browsers": "playwright install chromium"
+  },
+  "dependencies": {
+    "playwright": "^1.52.0"
+  }
+}

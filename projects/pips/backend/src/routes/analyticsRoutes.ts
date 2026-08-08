@@ -1,0 +1,487 @@
+// Analytics ingest (POST /a/*) and the admin dashboard reads (GET /admin/*). Mounted with no prefix so
+// the ingest paths stay bland and so nothing collides with the unrelated POST /deposit/track.
+// See bigdev/plans/cont/03-ADMIN-DASHBOARD.md §4.2 and §7.
+
+import type { FastifyInstance, FastifyPluginCallback, FastifyReply, FastifyRequest } from 'fastify';
+
+import { adminMiddleware } from '../middlewares/adminMiddleware.ts';
+import { allSettings, getSetting, isDestructive, isSettingKey, setSetting, validateSetting, type SettingKey } from '../config/admin-settings.ts';
+import { SPECIAL_ROLES, isSpecialRole } from '../config/roles.ts';
+import { alert } from '../lib/alert.ts';
+import { checkConfirm, countGroupSamples, previewRetention, purgeGroupSamples } from '../services/retention.ts';
+import { RATE_LIMIT_WINDOW, SUI_NETWORK } from '../config/main-config.ts';
+import { MAX_EVENTS_PER_REQUEST, isEventName, isPreAuthEvent, platformFrom } from '../config/analytics-catalog.ts';
+import { RELEASE } from '../config/release.ts';
+import {
+  ERROR_STATUSES,
+  buildBrief,
+  getErrorDetail,
+  countResolvedSince,
+  listErrorGroups,
+  opsStatus,
+  overviewReport,
+  perfReport,
+  setErrorStatus,
+  usageReport,
+  type ErrorStatus,
+} from '../services/insights.ts';
+import { handleError, handleNotFoundError } from '../utils/errorHandler.ts';
+
+import { ANALYTICS_OFF, BUDGET_SAMPLE_RATE, captureError, capMessage, capProps, errorBudgetExceeded, eventBudgetExceeded, redact, track } from '../lib/analytics.ts';
+import { CLOCK_SKEW_MS, issueSession, open, unframe } from '../lib/envelope.ts';
+import { prismaQuery } from '../lib/prisma.ts';
+import { userFromToken, userIdFromToken } from '../services/auth.ts';
+
+const ok = <T>(reply: FastifyReply, data: T): FastifyReply => reply.status(200).send({ success: true, error: null, data });
+
+// Server stamps identity, time, network, and release; the client's body only supplies the error itself.
+// Returns whether the report was recorded, which is what the kill switch and the daily budget gate.
+async function ingestClientError(request: FastifyRequest): Promise<boolean> {
+  const body = (request.body ?? {}) as Record<string, unknown>;
+  const message = typeof body.message === 'string' ? body.message.trim() : '';
+  if (!message) return false;
+
+  if (!(await getSetting('client_errors.enabled'))) return false;
+  if (await errorBudgetExceeded()) return false;
+
+  // Optional: an anonymous report is the whole point of this endpoint, so a missing or bad token is not
+  // an error, it just means the row carries no userId.
+  const header = request.headers.authorization;
+  const token = header?.startsWith('Bearer ') ? header.slice(7).trim() : '';
+  const user = token ? await userFromToken(token).catch(() => null) : null;
+
+  captureError(new Error(capMessage(message)), {
+    kind: 'client',
+    stack: typeof body.stack === 'string' ? body.stack : null,
+    userId: user?.id ?? null,
+    sessionId: typeof body.sessionId === 'string' ? body.sessionId.slice(0, 64) : null,
+    requestId: request.id,
+    path: typeof body.url === 'string' ? body.url.slice(0, 200) : null,
+    release: typeof body.release === 'string' ? body.release.slice(0, 40) : null,
+    context: {
+      platform: platformFrom(request.headers['user-agent'], body.standalone === true),
+      source: typeof body.source === 'string' ? body.source.slice(0, 40) : 'unknown',
+    },
+  });
+
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// Event ingest (§4.2, §4.3, §4.4)
+// ---------------------------------------------------------------------------
+
+function bearer(request: FastifyRequest): string {
+  const header = request.headers.authorization;
+  return header?.startsWith('Bearer ') ? header.slice(7).trim() : '';
+}
+
+// Verify-only, no DB: the key and the limit both have to be decided before the handler runs, and neither is
+// worth a query. A signed token is a trustworthy userId either way.
+function ingestUserId(request: FastifyRequest): string | null {
+  const token = bearer(request);
+  return token ? userIdFromToken(token) : null;
+}
+
+// Authenticated ingest is keyed by userId, not IP, so one user cannot amplify through many IPs. Anonymous
+// falls back to the real client IP (trustProxy is on) at a much tighter cap.
+function ingestRateKey(request: FastifyRequest): string {
+  const userId = ingestUserId(request);
+  return userId ? `u:${userId}` : `ip:${request.ip}`;
+}
+
+interface RawEvent {
+  name?: unknown;
+  props?: unknown;
+  sessionId?: unknown;
+  anonId?: unknown;
+  ts?: unknown;
+  /** The one thing the UA genuinely cannot tell us: iOS standalone PWA vs iOS Safari. */
+  standalone?: unknown;
+}
+
+type Parsed = { ok: true; events: RawEvent[] } | { ok: false; status: number; code: string; message: string };
+
+const bad = (status: number, code: string, message: string): Parsed => ({ ok: false, status, code, message });
+
+// One record's plaintext is one event (sealed at queue time, §4.4 point 5), but a plain `{ events: [...] }`
+// batch is accepted too, which is what the JSON fallback and any curl sends.
+function eventsFrom(plaintext: string): RawEvent[] | null {
+  try {
+    const parsed = JSON.parse(plaintext) as unknown;
+    if (Array.isArray(parsed)) return parsed as RawEvent[];
+    if (parsed && typeof parsed === 'object') {
+      const batch = (parsed as { events?: unknown }).events;
+      if (Array.isArray(batch)) return batch as RawEvent[];
+      return [parsed as RawEvent];
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function parseBody(request: FastifyRequest, now: number): Promise<Parsed> {
+  const body = request.body;
+
+  // JSON path: the plaintext fallback and anything hand-driven.
+  if (body && !Buffer.isBuffer(body) && typeof body === 'object') {
+    const events = eventsFrom(JSON.stringify(body));
+    return events ? { ok: true, events } : bad(400, 'BAD_BODY', 'body is not a recognised event batch');
+  }
+
+  if (!Buffer.isBuffer(body) || !body.length) return bad(400, 'BAD_BODY', 'body is empty');
+
+  const records = unframe(new Uint8Array(body), MAX_EVENTS_PER_REQUEST);
+  if (!records) return bad(400, 'BAD_BODY', 'malformed envelope framing');
+  if (records.length > MAX_EVENTS_PER_REQUEST) return bad(400, 'TOO_MANY_EVENTS', `at most ${MAX_EVENTS_PER_REQUEST} events per request`);
+
+  const out: RawEvent[] = [];
+  for (const record of records) {
+    const opened = await open(record, now);
+    if (!opened.ok) return bad(400, 'BAD_ENVELOPE', opened.reason);
+    const events = eventsFrom(opened.plaintext);
+    if (!events) return bad(400, 'BAD_BODY', 'envelope payload is not an event');
+    out.push(...events);
+  }
+  return { ok: true, events: out };
+}
+
+interface IngestResult {
+  status: number;
+  code?: string;
+  message?: string;
+  accepted: number;
+}
+
+// Everything the client sends about identity, time, network, and release is discarded and restamped here
+// (§13 rule 2). The client only ever supplies the event name, its props, and its own session/anon ids.
+async function ingestEvents(request: FastifyRequest): Promise<IngestResult> {
+  // A hard kill and a flipped setting both look like success to the client: ingest must never surface as a
+  // failure, and a client that sees an error is a client that might retry.
+  if (ANALYTICS_OFF) return { status: 202, accepted: 0 };
+  if (!(await getSetting('analytics.enabled'))) return { status: 202, accepted: 0 };
+
+  const now = Date.now();
+  const parsed = await parseBody(request, now);
+  if (!parsed.ok) return { status: parsed.status, code: parsed.code, message: parsed.message, accepted: 0 };
+  if (parsed.events.length > MAX_EVENTS_PER_REQUEST) {
+    return { status: 400, code: 'TOO_MANY_EVENTS', message: `at most ${MAX_EVENTS_PER_REQUEST} events per request`, accepted: 0 };
+  }
+
+  const userId = ingestUserId(request);
+  const platform = platformFrom(request.headers['user-agent'], hasStandaloneHint(parsed.events));
+
+  const rows: Array<Record<string, unknown>> = [];
+  for (const raw of parsed.events) {
+    const name = typeof raw.name === 'string' ? raw.name : '';
+    // Allowlist or reject. Checked before the auth gate because bounded cardinality is the control that
+    // protects every GROUP BY in the dashboard.
+    if (!isEventName(name)) return { status: 400, code: 'UNKNOWN_EVENT', message: `unknown event name "${name.slice(0, 60)}"`, accepted: 0 };
+    if (!userId && !isPreAuthEvent(name)) return { status: 401, code: 'AUTH_REQUIRED', message: `"${name}" requires a session`, accepted: 0 };
+
+    // Replay window on the client clock. Stateless, and it caps replay of a captured request on data that
+    // is already low value, which is why there is no seq store.
+    if (typeof raw.ts === 'number' && Math.abs(now - raw.ts) > CLOCK_SKEW_MS) {
+      return { status: 400, code: 'STALE_EVENT', message: 'event timestamp is outside the accepted window', accepted: 0 };
+    }
+
+    // Redact before capping, so a long secret is scrubbed rather than truncated into the row.
+    const source = raw.props && typeof raw.props === 'object' && !Array.isArray(raw.props) ? redact(raw.props as Record<string, unknown>) : raw.props;
+    const capped = capProps(source, { strict: true });
+    if (!capped.ok) return { status: 400, code: 'BAD_PROPS', message: capped.reason, accepted: 0 };
+
+    rows.push({
+      name,
+      userId,
+      // Client-owned on purpose: the anonId is what stitches a pre-auth session to the user at query time.
+      anonId: typeof raw.anonId === 'string' ? raw.anonId.slice(0, 64) : null,
+      sessionId: typeof raw.sessionId === 'string' ? raw.sessionId.slice(0, 64) : 'unknown',
+      props: Object.keys(capped.props).length ? capped.props : undefined,
+      platform,
+      source: 'web',
+      release: RELEASE,
+      network: SUI_NETWORK,
+    });
+  }
+
+  // Past the daily budget we sample rather than go dark, so trends stay readable while the table cools.
+  const sampled = (await eventBudgetExceeded()) ? rows.filter(() => Math.random() <= BUDGET_SAMPLE_RATE) : rows;
+
+  // Fire-and-forget. `ts` is deliberately not passed: the column defaults to the server clock, so a client
+  // cannot backdate a row. skipDuplicates would be a no-op here, there is no unique constraint to collide on.
+  if (sampled.length) {
+    void prismaQuery.event.createMany({ data: sampled as never }).catch(() => {});
+  }
+  return { status: 202, accepted: sampled.length };
+}
+
+// Metadata rather than a prop, so it survives sendBeacon (which cannot set a header) without eating a prop
+// slot. A hint is not identity, so trusting it is fine.
+function hasStandaloneHint(events: RawEvent[]): boolean {
+  return events.some((e) => e.standalone === true);
+}
+
+// ---------------------------------------------------------------------------
+// Settings (§2.6) with the §9.1 gate
+// ---------------------------------------------------------------------------
+
+type Applied = { ok: true; value: boolean | number } | { ok: false; status: number; code: string; message: string };
+
+// One key per call, validated against the SETTINGS bounds, audited on every apply. There is deliberately
+// no force flag and no bypass: if the API cannot be driven destructively by accident, neither can the UI.
+//
+// Order matters. The bounds are checked BEFORE the confirm, so typing `1` into a retention field is
+// rejected outright rather than offered as something to confirm carefully. The floor exists so the worst
+// possible mistake still leaves a month of data to work from.
+async function applySettingChange(key: string, value: unknown, confirm: string | undefined, actorId: string | null): Promise<Applied> {
+  const rows = await allSettings();
+  const row = rows.find((s) => s.key === key);
+  if (!row) return { ok: false, status: 400, code: 'UNKNOWN_SETTING', message: 'unknown setting key' };
+
+  const checked = validateSetting(key, value);
+  if (!checked.ok) return { ok: false, status: 400, code: 'INVALID_VALUE', message: checked.reason };
+
+  if (isSettingKey(key) && isDestructive(key)) {
+    const gate = await guardDestructive(key, checked.value as number, confirm);
+    if (gate) return gate;
+  }
+
+  const result = await setSetting(key, checked.value);
+  if (!result.ok) return { ok: false, status: 400, code: 'INVALID_VALUE', message: result.reason };
+
+  track(actorId, 'admin.setting_change', { props: { key, from: String(row.value), to: String(result.value) } });
+  return { ok: true, value: result.value };
+}
+
+// The §9.1 confirm gate. Recomputes the count at apply time rather than trusting the preview, so a stale
+// number cannot be confirmed after a busy hour.
+async function guardDestructive(key: SettingKey, next: number, confirm: string | undefined): Promise<Applied | null> {
+  const preview = await previewRetention(key, next);
+  if (!preview) return null;
+  if (preview.widening) return null; // keeps more, deletes nothing, needs no ceremony
+
+  const verdict = checkConfirm(confirm, preview.deletes, preview.noun);
+  if (verdict.ok) {
+    // Deleting data is the one thing worth a ping even when it was entirely intentional.
+    alert('warn', `retention narrowed: ${key} ${preview.current} -> ${next}, ${preview.deletes} ${preview.noun} will be pruned`, undefined, `retention:${key}`);
+    return null;
+  }
+  if (verdict.reason === 'drift') {
+    return { ok: false, status: 409, code: 'PREVIEW_AGAIN', message: `the row count moved since your preview, preview again (now "${verdict.expected}")` };
+  }
+  const message =
+    verdict.reason === 'absent'
+      ? `this deletes ${preview.deletes} ${preview.noun}, confirm with "${verdict.expected}"`
+      : `confirmation does not match, type "${verdict.expected}"`;
+  return { ok: false, status: 400, code: 'CONFIRM_REQUIRED', message };
+}
+
+export const analyticsRoutes: FastifyPluginCallback = (app: FastifyInstance, _opts, done) => {
+  // Sealed envelopes arrive as binary. Scoped to this plugin, so no other route's body parsing changes.
+  app.addContentTypeParser('application/octet-stream', { parseAs: 'buffer' }, (_req, body, cb) => {
+    cb(null, body);
+  });
+
+  // Anonymous is capped hard and keyed by IP; authenticated is looser and keyed by userId.
+  const ingest = {
+    config: {
+      rateLimit: {
+        max: (request: FastifyRequest) => (ingestUserId(request) ? getSetting('rate.track_max') : getSetting('rate.track_anon_max')),
+        timeWindow: RATE_LIMIT_WINDOW,
+        keyGenerator: ingestRateKey,
+      },
+    },
+  };
+
+  // The handshake. The key is issued at runtime over TLS and never baked into the bundle, which is the
+  // whole reason the envelope is worth anything (§4.4).
+  app.post('/a/hello', ingest, async (_request: FastifyRequest, reply: FastifyReply) => {
+    const session = issueSession();
+    return reply.status(200).send({ success: true, error: null, data: session });
+  });
+
+  // Ingest. 202 for anything past the gates, and the client ignores the code either way.
+  app.post('/a/e', ingest, async (request: FastifyRequest, reply: FastifyReply) => {
+    const result = await ingestEvents(request);
+    if (result.status !== 202) return handleError(reply, result.status, result.message ?? 'Rejected', result.code ?? 'REJECTED');
+    return reply.status(202).send({ success: true, error: null, data: { accepted: result.accepted } });
+  });
+
+  // The dashboard's own bucket, read live off the setting so tuning it is a UI edit, not a deploy.
+  const admin = {
+    config: { rateLimit: { max: () => getSetting('rate.admin_max'), timeWindow: RATE_LIMIT_WINDOW } },
+    preHandler: adminMiddleware,
+  };
+
+  // Liveness for the gate itself: 200 for an ADMIN, 404 for everyone else including anonymous.
+  app.get('/admin/ping', admin, async (request: FastifyRequest, reply: FastifyReply) => {
+    return reply.status(200).send({
+      success: true,
+      error: null,
+      data: {
+        ok: true,
+        user: { id: request.user?.id, username: request.user?.username ?? null },
+        network: SUI_NETWORK,
+        analyticsEnabled: await getSetting('analytics.enabled'),
+      },
+    });
+  });
+
+  // Client error reports. Anonymous is allowed on purpose: a white screen before sign-in is exactly the
+  // failure we were blind to, and the client already dedupes to one report per fingerprint per session.
+  // Always 202 past the rate limiter, so a broken client never sees an analytics failure.
+  app.post(
+    '/a/err',
+    { config: { rateLimit: { max: () => getSetting('rate.track_anon_max'), timeWindow: RATE_LIMIT_WINDOW } } },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const accepted = await ingestClientError(request);
+      return reply.status(202).send({ success: true, error: null, data: { accepted } });
+    }
+  );
+
+  // Ops: the last detector sweep, worst first. Read from the stored snapshot, never re-evaluated here, so
+  // a page load costs one row rather than twelve queries and cannot disagree with what already alerted.
+  app.get('/admin/ops', admin, async (_request: FastifyRequest, reply: FastifyReply) => {
+    return ok(reply, await opsStatus());
+  });
+
+  // Overview: users, plays, money, chain, and the two sparklines. Total user balances come from the
+  // 15-minute cron's stored row, never a per-request chain sweep.
+  app.get('/admin/overview', admin, async (_request: FastifyRequest, reply: FastifyReply) => {
+    return ok(reply, await overviewReport());
+  });
+
+  // Performance: mint latency, settle lag, per-route p95 off the in-memory access ring, worker health.
+  app.get('/admin/perf', admin, async (request: FastifyRequest, reply: FastifyReply) => {
+    const q = request.query as { hours?: string };
+    const hours = Math.min(168, Math.max(1, Number(q.hours) || 6));
+    return ok(reply, await perfReport(hours));
+  });
+
+  // The settings drawer renders itself from this, so adding a knob is one line in the SETTINGS const.
+  app.get('/admin/settings', admin, async (_request: FastifyRequest, reply: FastifyReply) => {
+    return ok(reply, { settings: await allSettings() });
+  });
+
+  // What a candidate value would delete, before anything is deleted: the exact count, the timestamp range
+  // it spans, and whether it is a widening (safe) or a narrowing (destructive, needs the typed confirm).
+  app.get('/admin/settings/preview', admin, async (request: FastifyRequest, reply: FastifyReply) => {
+    const q = request.query as { key?: string; value?: string };
+    const value = Number(q.value);
+    if (!q.key || !Number.isFinite(value)) return handleError(reply, 400, 'key and a numeric value are required', 'BAD_PREVIEW');
+    const preview = await previewRetention(q.key, Math.trunc(value));
+    if (!preview) return handleError(reply, 400, 'that setting does not delete anything, so it has no preview', 'NOT_DESTRUCTIVE');
+    return ok(reply, preview);
+  });
+
+  // One key per call. A destructive key needs the §9.1 confirm, which has no bypass flag by design.
+  app.patch('/admin/settings', admin, async (request: FastifyRequest, reply: FastifyReply) => {
+    const body = (request.body ?? {}) as { key?: string; value?: unknown; confirm?: string };
+    const key = typeof body.key === 'string' ? body.key : '';
+    const applied = await applySettingChange(key, body.value, body.confirm, request.user?.id ?? null);
+    if (!applied.ok) return handleError(reply, applied.status, applied.message, applied.code);
+    return ok(reply, { key, value: applied.value });
+  });
+
+  // Usage: the ascending event list, the funnel, per-game conversion, menu ranks, and D1/D7.
+  app.get('/admin/usage', admin, async (request: FastifyRequest, reply: FastifyReply) => {
+    const q = request.query as { days?: string };
+    const days = Math.min(90, Math.max(1, Number(q.days) || 30));
+    return ok(reply, await usageReport(days));
+  });
+
+  // Grouped errors. Default is open bugs newest-first, which is the triage order.
+  app.get('/admin/errors', admin, async (request: FastifyRequest, reply: FastifyReply) => {
+    const q = request.query as Record<string, string | undefined>;
+    const [groups, resolvedThisWeek] = await Promise.all([
+      listErrorGroups({
+        status: q.status,
+        level: q.level,
+        kind: q.kind,
+        network: q.network,
+        release: q.release,
+        limit: q.limit ? Number(q.limit) : undefined,
+      }),
+      // So an empty list can report progress instead of absence. "Nothing open" on its own reads the same
+      // whether the product is healthy or capture has quietly stopped working.
+      countResolvedSince(Date.now() - 7 * 86_400_000),
+    ]);
+    return ok(reply, { groups, resolvedThisWeek });
+  });
+
+  app.get('/admin/errors/:fingerprint', admin, async (request: FastifyRequest, reply: FastifyReply) => {
+    const { fingerprint } = request.params as { fingerprint: string };
+    const detail = await getErrorDetail(fingerprint);
+    if (!detail) return handleNotFoundError(reply, 'Error group');
+    return ok(reply, detail);
+  });
+
+  // ack / resolve / ignore. `ignore` is what keeps an expected abort from ever paging us again.
+  app.patch('/admin/errors/:fingerprint', admin, async (request: FastifyRequest, reply: FastifyReply) => {
+    const { fingerprint } = request.params as { fingerprint: string };
+    const body = (request.body ?? {}) as { status?: string; notes?: string | null };
+    if (!body.status || !ERROR_STATUSES.includes(body.status as ErrorStatus)) {
+      return handleError(reply, 400, `status must be one of ${ERROR_STATUSES.join(', ')}`, 'INVALID_STATUS');
+    }
+    const group = await setErrorStatus(fingerprint, body.status as ErrorStatus, body.notes);
+    if (!group) return handleNotFoundError(reply, 'Error group');
+    return ok(reply, { group });
+  });
+
+  // The one per-object destructive action in the whole dashboard, and it carries the same typed confirm.
+  // There is deliberately no path here to truncate a table, purge every group, wipe a user, or reset the
+  // database: bulk deletion happens only through retention, on a cron, under the floors above.
+  app.delete('/admin/errors/:fingerprint/samples', admin, async (request: FastifyRequest, reply: FastifyReply) => {
+    const { fingerprint } = request.params as { fingerprint: string };
+    const q = request.query as { confirm?: string };
+    const actual = await countGroupSamples(fingerprint);
+    if (!actual) return handleNotFoundError(reply, 'Error samples');
+
+    const verdict = checkConfirm(q.confirm, actual, 'samples');
+    if (!verdict.ok) {
+      if (verdict.reason === 'drift') return handleError(reply, 409, `the count moved, confirm with "${verdict.expected}"`, 'PREVIEW_AGAIN');
+      return handleError(reply, 400, `this deletes ${actual} samples, confirm with "${verdict.expected}"`, 'CONFIRM_REQUIRED');
+    }
+
+    const deleted = await purgeGroupSamples(fingerprint);
+    track(request.user?.id ?? null, 'admin.setting_change', { props: { key: 'purge.group_samples', from: String(actual), to: '0' } });
+    alert('warn', `purged ${deleted} samples from error group ${fingerprint}`, undefined, `purge:${fingerprint}`);
+    return ok(reply, { fingerprint, deleted });
+  });
+
+  // Roles the API is allowed to move: never ADMIN, in either direction. ADMIN stays script-only (§2.1
+  // rule 3) so a compromised admin session cannot mint more admins or lock the team out.
+  app.patch('/admin/users/:id/roles', admin, async (request: FastifyRequest, reply: FastifyReply) => {
+    const { id } = request.params as { id: string };
+    const body = (request.body ?? {}) as { role?: string; grant?: boolean };
+    const role = typeof body.role === 'string' ? body.role.toUpperCase() : '';
+    if (!isSpecialRole(role)) return handleError(reply, 400, `role must be one of ${SPECIAL_ROLES.join(', ')}`, 'INVALID_ROLE');
+    if (role === 'ADMIN') {
+      return handleError(reply, 400, 'ADMIN is granted and revoked only by bun scripts/grant-role.ts, never through the API', 'ADMIN_IS_SCRIPT_ONLY');
+    }
+
+    const target = await prismaQuery.user.findUnique({ where: { id }, select: { id: true, username: true, specialRoles: true } });
+    if (!target) return handleNotFoundError(reply, 'User');
+
+    const grant = body.grant !== false;
+    const next = grant ? [...new Set([...target.specialRoles, role])] : target.specialRoles.filter((r) => r !== role);
+    if (next.length === target.specialRoles.length && grant === target.specialRoles.includes(role)) {
+      return ok(reply, { userId: target.id, specialRoles: target.specialRoles, changed: false });
+    }
+
+    await prismaQuery.user.update({ where: { id }, data: { specialRoles: next } });
+    track(request.user?.id ?? null, 'admin.role_change', { props: { target: target.username ?? target.id, role, action: grant ? 'grant' : 'revoke' } });
+    return ok(reply, { userId: target.id, specialRoles: next, changed: true });
+  });
+
+  // text/markdown, not JSON: the whole point is that it pastes straight into an AI.
+  app.get('/admin/errors/:fingerprint/brief', admin, async (request: FastifyRequest, reply: FastifyReply) => {
+    const { fingerprint } = request.params as { fingerprint: string };
+    const brief = await buildBrief(fingerprint);
+    if (!brief) return handleNotFoundError(reply, 'Error group');
+    return reply.status(200).type('text/markdown; charset=utf-8').send(brief);
+  });
+
+  done();
+};

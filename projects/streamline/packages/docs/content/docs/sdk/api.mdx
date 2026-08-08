@@ -1,0 +1,77 @@
+---
+title: API reference
+description: StreamLine client, signers, builders, and helpers.
+icon: Braces
+---
+
+# API reference
+
+## `StreamLine`
+
+```ts
+new StreamLine({
+  network?: "testnet" | "mainnet" | "devnet", // default testnet
+  signer: StreamLineSigner,
+  client?: SuiClient,
+  indexerUrl?: string,
+  packageId?: string,
+  usdcType?: string,
+  fullnodeUrl?: string,
+  suinsDomain?: string,
+})
+```
+
+### Methods / namespaces
+
+| API | Description |
+| --- | --- |
+| `resolve(input)` | Handle or hex → `{ address, displayName, handle }` or `null` |
+| `stream.to(to, opts)` | Resolve, build `create_stream_v2`, sign & execute |
+| `streams.get(id)` | Indexer `GET /stream/{id}` |
+| `streams.list({ sender?, freelancer? })` | Indexer `GET /streams` |
+
+### `stream.to` options
+
+```ts
+type StreamToOptions = {
+  amountUsdc: number;
+  durationDays?: number;   // default 14
+  durationMs?: number;     // overrides days
+  milestones?: { name: string; amountUsdc: number }[];
+  yieldBps?: number;       // default 0
+  disputeWindowMs?: number;
+  revocable?: boolean;     // default true
+};
+```
+
+Returns `{ digest, streamId?, recipient }`.
+
+## Signers
+
+```ts
+type StreamLineSigner = {
+  address: string;
+  signAndExecute: (tx: Transaction) => Promise<ExecuteResult>;
+};
+```
+
+| Helper | Use case |
+| --- | --- |
+| `createKeypairSigner({ keypair, client })` | Scripts / agents pay their own gas |
+| `createSponsoredKeypairSigner({ keypair, client, network, sponsorUrl })` | Gasless via app Enoki proxy |
+
+## Builders (shared with the app)
+
+- `buildCreateStream(args)`
+- `buildCreateStreamV2(args & { yieldBps })`
+- `findCreatedStreamId(objectChanges)`
+- `splitMilestoneAmounts(totalBase, n)`
+- `toBaseUnits(usdc)`
+
+## Identity helpers
+
+`normalizeHandle`, `formatHandle`, `formatSuins`, `resolveRecipient`, `isHexAddress`, …
+
+## Config
+
+`resolveNetworkConfig(network, overrides?)` → package id, USDC type, fullnode, indexer URL, SuiNS domain.

@@ -1,0 +1,52 @@
+---
+title: Audit & compliance
+description: Indexer audit timeline, payroll export, and Seal selective disclosure.
+icon: ShieldCheck
+---
+
+# Audit & compliance
+
+StreamLine’s compliance model is **cryptographic payment history with voluntary disclosure** — not bank KYC. Payroll orgs export digests and share sealed packs with auditors.
+
+## Audit timeline
+
+The indexer stores a unified `audit_events` ledger from on-chain events:
+
+- Streams: created, milestones, drips, disputes (`StreamPaused`), resolution proposed/resolved
+- Gift cards: created / claimed / cancelled (amount appears only at claim/cancel)
+
+API:
+
+```
+GET /audit?party=<address>&from_ms=&to_ms=&limit=
+GET /payroll?sender=<address>&from_ms=&to_ms=
+```
+
+Redeploy the indexer after pulling so `schema.sql` creates `audit_events` and the poller watches the `giftcard` module.
+
+## Pro Reports
+
+**Pro → Reports** (desktop nav) or the phone overview document icon:
+
+1. Period filter (30d / 90d / 365d / all)
+2. Payroll statement — CSV / JSON with drip totals + tx digests
+3. Audit timeline — exportable event feed
+4. Selective disclosure — encrypt payroll + timeline to an auditor `@handle` or `0x` via Seal; download a pack file only they can decrypt
+
+## User (personal) activity
+
+**User → Activity** (home feed):
+
+1. Tap a row → receipt modal (type, time, amount, subject, digest)
+2. **Export receipt** (JSON), **Copy digest**, **View on explorer**
+
+**User → Profile menu → Export activity**:
+
+1. Period filter (30d / 90d / 1y / all)
+2. Download full personal audit trail as CSV or JSON (same `GET /audit?party=` feed, wallet-scoped)
+
+Org-grade payroll packs stay in Pro; User is personal receipts + history.
+
+## Selective disclosure
+
+The auditor pack is Seal-encrypted to the auditor’s wallet identity (same `seal_approve` identity model as private streams). Share the JSON file out-of-band; plaintext never hits the indexer.

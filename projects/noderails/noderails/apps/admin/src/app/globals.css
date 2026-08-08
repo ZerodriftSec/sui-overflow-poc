@@ -1,0 +1,88 @@
+@import "tailwindcss";
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+:root {
+  --background: #f6f9fc;
+  --foreground: #0a2540;
+  --card: #ffffff;
+  --card-solid: #ffffff;
+  --card-foreground: #0a2540;
+  --border: #e3e8ee;
+  --input: #ffffff;
+  --primary: #635bff;
+  --primary-hover: #5851ea;
+  --primary-foreground: #ffffff;
+  --secondary: #f0f2f5;
+  --secondary-foreground: #425466;
+  --muted: #f0f2f5;
+  --muted-foreground: #697386;
+  --accent: #df1b41;
+  --accent-foreground: #ffffff;
+  --destructive: #df1b41;
+  --success: #0abf53;
+  --warning: #f2ae00;
+  --ring: #635bff;
+  --radius: 0.625rem;
+  --gradient-primary: linear-gradient(135deg, #635bff 0%, #df1b41 100%);
+  --gradient-hero: linear-gradient(135deg, #0a2540, #1b3a5c, #425466);
+}
+
+* {
+  border-color: var(--border);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Top ambient gradient for admin */
+.admin-mesh {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 400px;
+  background:
+    radial-gradient(ellipse 70% 60% at 30% -10%, rgba(99, 91, 255, 0.06) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 50% at 70% -5%, rgba(223, 27, 65, 0.04) 0%, transparent 50%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Gradient text */
+.gradient-text {
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  background-image: var(--gradient-primary);
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(66, 84, 102, 0.25); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(66, 84, 102, 0.4); }
+
+/* Stat card shimmer */
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.stat-shimmer {
+  overflow: hidden;
+  position: relative;
+}
+
+.stat-shimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(99, 91, 255, 0.02), transparent);
+  animation: shimmer 3s infinite;
+}

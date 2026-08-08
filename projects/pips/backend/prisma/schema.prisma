@@ -1,0 +1,365 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id               String    @id @default(cuid())
+  address          String    @unique          // Sui address. privy/dev: their wallet. wallet-connect: the server-held custodial play wallet
+  provider         String    @default("dev")  // 'privy' | 'dev' | 'wallet'
+  email            String?
+  displayName      String                     // generated handle, e.g. "Lucky Otter"
+  username         String?   @unique           // user-chosen unique handle, set once during onboarding. null = not onboarded yet
+  nonce            String?                     // auth challenge (legacy enoki personal-message sign, removed in the privy swap)
+
+  privyUserId      String?   @unique           // Privy DID (sub claim), the stable account key
+  suiPublicKey     String?                     // Privy ed25519 public key, for signature assembly
+  privyWalletId    String?                     // Privy embedded-wallet id used by server rawSign
+
+  twitterUsername  String?                     // linked X handle, lowercased, source = Privy
+  twitterSubject   String?   @unique           // X account id; unique so two PIPS users can't claim one X
+  twitterName      String?                     // X display name, nice-to-have
+
+  // Wallet-connect (custodial play-wallet model). The connected external Sui wallet is the login
+  // identity + default withdrawal target; playWalletSecret is the AES-256-GCM encrypted secret of
+  // the server-held custodial play wallet (`address` above), which signs this user's plays.
+  walletAuthAddress String?  @unique
+  playWalletSecret  String?
+
+  predictManagerId String?                     // fork (localnet/devnet): their PredictManager object id (lazily created)
+  predictWrapperId String?                     // real (testnet): their derived account::AccountWrapper id (hot-path cache over the derived address; self-heals if gone)
+  dusdcFunded      Boolean   @default(false)   // free starting USDC chips minted
+  suiGasFunded     Boolean   @default(false)   // free SUI for gas transferred (localnet)
+  lastFundedAt     DateTime?                    // last treasury chip top-up, gates the login refill cooldown
+
+  soundEnabled     Boolean   @default(true)
+  hapticsEnabled   Boolean   @default(true)
+  reducedMotion    Boolean   @default(false)
+  confirmTrades    Boolean   @default(false)   // double-tap to place a staked play (opt-in fat-finger guard)
+  theme            String    @default("classic")   // selected device skin id, synced cross-device
+  themeConfig      Json?                            // per-part customizer rig { preset, parts }; theme stays the preset id for legacy readers
+
+  avatarUrl        String?                     // custom uploaded avatar (Spaces webp); null = render the PIPS identicon
+
+  referralCode     String?   @unique          // anon link token, generated in provisionUser
+  referralAnon     Boolean   @default(false)  // link format: false = /@username, true = /r/CODE
+  referredById     String?
+  referredAt       DateTime?
+  referredBy       User?     @relation("Referrals", fields: [referredById], references: [id])
+  referrals        User[]    @relation("Referrals")
+
+  tzOffsetMin      Int?                        // JS getTimezoneOffset() at last login; localizes time-based achievements (null = UTC)
+
+  // ADMIN | KOL | BETA_TESTER, empty for normal users. Granted out-of-band by scripts/grant-role.ts;
+  // no user-facing route may ever write this. Read fresh per request so a revoke lands immediately.
+  specialRoles     String[]  @default([])
+
+  walletSyncCheckpoint BigInt?                  // wallet-indexer high-water mark (last indexed checkpoint seq); null = never synced
+  walletSyncedAt       DateTime?               // last successful index tick, for batch prioritization
+
+  lastSignIn       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  plays            Play[]
+  achievements     UserAchievement[]
+  stats            UserStats?
+  minigameScores   MinigameScore[]
+  referralClaims   ReferralClaim[]   @relation("ReferralClaims")
+  deposits         Deposit[]
+  walletTxs        WalletTx[]
+
+  @@index([referredById])
+}
+
+// Cached coin metadata + best-effort price, keyed by coin type per network. Populated by token-worker and
+// on-demand resolves; the send picker and activity feed read logos/decimals/symbol/price from here so we
+// never hand-add a token logo. Price is best-effort (null where unknown, common on testnet).
+model TokenInfo {
+  id         String   @id @default(cuid())
+  network    String                         // 'testnet' | 'mainnet' | ...
+  coinType   String                         // full type, e.g. 0x..::dusdc::DUSDC
+  symbol     String
+  name       String?
+  decimals   Int      @default(9)
+  iconUrl    String?                         // on-chain metadata iconUrl, or a curated override
+  priceUsd   Float?                          // best-effort; null = unknown
+  verified   Boolean  @default(false)        // curated/known vs discovered
+  source     String?                         // 'onchain' | 'curated' | 'cetus' | ...
+  updatedAt  DateTime @updatedAt
+  createdAt  DateTime @default(now())
+
+  @@unique([network, coinType])
+  @@index([network, symbol])
+}
+
+// One money movement at a user's Sui address. Written by the wallet-indexer (chain scan) and, for movements we
+// sign, inline by the wallet service (same digest -> upsert, no dup). Excludes PIPS-internal play churn.
+model WalletTx {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  address      String                         // user's Sui address at index time
+  direction    String                         // 'in' | 'out'
+  kind         String                         // 'receive' | 'send' | 'faucet' | 'grant' | 'bridge'
+  coinType     String
+  symbol       String?
+  decimals     Int      @default(9)
+  amount       BigInt                          // positive magnitude, base units
+  counterparty String?                         // other party address, best-effort (sender on a receive)
+  digest       String                          // Sui tx digest
+  chain        String   @default("sui")         // source chain label; bridges show origin (base, arbitrum, ...)
+  status       String   @default("confirmed")   // 'confirmed' | 'pending' (bridge in flight)
+  timestampMs  BigInt                           // on-chain tx timestamp (ms); ordering key
+  createdAt    DateTime @default(now())
+
+  @@unique([userId, digest, coinType])          // idempotent upsert key (one net change per coin per tx)
+  @@index([userId, timestampMs])
+  @@index([address])
+}
+
+// A cross-chain bridge deposit in flight. Not load-bearing for correctness: the balance live-reads the
+// chain either way once the coins land at the user's address, so this table is for the drawer's progress
+// UI and support. Only written on mainnet, where cross-chain execution is enabled. See depositRoutes.ts.
+model Deposit {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  fromChain   String   // source chain key (ethereum, base, arbitrum, solana)
+  fromToken   String   // source symbol (USDC, ETH, SOL)
+  fromAmount  String
+  toAmount    String?  // expected out, from the quote estimate
+  toAddress   String   // user.address at quote time, stamped server-side
+  tool        String   // mayanMCTP, allbridge, ...
+  bridge      String?  // LI.FI bridge/tool key, needed to query status
+  txHash      String?  @unique // source-chain tx hash, set once the client broadcasts
+  status      String   @default("PENDING") // PENDING | DONE | FAILED | REFUNDED
+  substatus   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([status])
+}
+
+// A referrer's payout of their accrued referral revshare (25% of referees' trading fees). One row per
+// claim; the amount is a snapshot of claimable at reserve time so a later share-rate change never
+// re-prices an already-claimed payout. status: pending (reserved, payout in flight) -> paid | failed.
+// claimable = earned - SUM(amount where status in {pending, paid}), so a pending row locks the funds
+// for any concurrent claim and a failed row releases them. See services/referral.ts.
+model ReferralClaim {
+  id         String    @id @default(cuid())
+  referrerId String
+  referrer   User      @relation("ReferralClaims", fields: [referrerId], references: [id])
+  amount     BigInt                          // DUSDC 6dp, snapshot of claimable at reserve time
+  status     String    @default("pending")   // pending | paid | failed
+  txDigest   String?
+  createdAt  DateTime  @default(now())
+  paidAt     DateTime?
+
+  @@index([referrerId, status])
+  @@index([referrerId, createdAt])
+}
+
+model Play {
+  id           String    @id @default(cuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id])
+
+  game         String                          // 'lucky' | 'range' | 'moonshot'
+  status       String    @default("pending")   // pending|open|won|lost|cashed_out|error
+  network      String    @default("devnet")   // chain this play settled against: devnet | testnet | mainnet. Existing rows backfill to devnet on the one db:push
+
+  asset        String                          // 'BTC' | 'ETH' | 'SOL' | 'SUI'
+  oracleId     String                          // our oracle object for this market
+  marketKey    String                          // fork: JSON-serialized MarketKey/RangeKey. real: decimal order id string, '' until minted
+  side         String?                         // 'up' | 'down' (binary games)
+  leverage     Float?                          // fork: nominal tier bucket (2/3/5/10). real: the actual admitted on-chain leverage
+  strike       String?                         // binary strike (display units)
+  lower        String?                         // range lower bound (display units)
+  upper        String?                         // range upper bound (display units)
+  widthPct     Float?                          // range band width
+  durationSec  Int
+  expiry       BigInt                          // oracle expiry, unix ms
+
+  stake        BigInt                          // DUSDC base units
+  entryCost    BigInt    @default(0)           // mint cost base units
+  rake         BigInt    @default(0)           // house fee collected on this play (6dp); 0 if none/unminted. Ground truth for referral revshare
+  markValue    BigInt?                         // last known live mark
+  payout       BigInt?                         // set on settle / cashout
+  pnl          BigInt?                         // signed realized PnL: payout - entryCost (the real mint cost, not the requested stake)
+  multiplier   Float?                          // potential payout multiple at mint
+
+  entrySpot    String?                         // asset spot at entry (display units), debug/audit
+  settlePrice  String?                         // exact oracle settlement_price for expiry-settled plays; null for cash-outs
+
+  txMint       String?
+  txRedeem     String?
+  txSettle     String?                         // post-expiry price push that froze the settlement price
+  rngSeed      String?                         // lucky: server RNG seed, for fairness audit
+
+  openedAt     DateTime?
+  settledAt    DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@index([userId, status])
+  @@index([createdAt])
+  @@index([status, expiry])                    // settle worker scans open plays by expiry
+}
+
+model Achievement {
+  slug             String   @id                // 'first_play', 'win_streak_5', ...
+  name             String
+  description      String                       // human, understandable condition
+  illo             String                       // Illo name for the sticker slot
+  metric           String                       // 'games_played'|'wins'|'win_streak'|'volume'|'cashouts'|'big_multiplier'
+  threshold        Float
+  sortOrder        Int      @default(0)
+  userAchievements UserAchievement[]
+}
+
+model UserAchievement {
+  id               String      @id @default(cuid())
+  userId           String
+  user             User        @relation(fields: [userId], references: [id])
+  achievementSlug  String
+  achievement      Achievement @relation(fields: [achievementSlug], references: [slug])
+  unlockedAt       DateTime    @default(now())
+
+  @@unique([userId, achievementSlug])
+}
+
+model UserStats {
+  userId        String    @id
+  user          User      @relation(fields: [userId], references: [id])
+  gamesPlayed   Int       @default(0)
+  wins          Int       @default(0)
+  losses        Int       @default(0)
+  currentStreak Int       @default(0)           // signed: + win streak, - loss streak
+  maxStreak     Int       @default(0)
+  totalVolume   BigInt    @default(0)
+  netPnl        BigInt    @default(0)           // signed
+  firstPlayAt   DateTime?
+  lastPlayAt    DateTime?
+  favoriteGame  String?
+  updatedAt     DateTime  @updatedAt
+}
+
+// Arcade minigame high scores (Line Rider, Flappy Piper). One row per user per game holds their
+// best score, so the leaderboard is a plain `order by score desc`. Submitting a lower score is a
+// no-op. Keyed to the user so every board reads off their username, never an address.
+model MinigameScore {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  game      String                          // 'line-rider' | 'flappy-piper'
+  score     Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, game])
+  @@index([game, score])
+}
+
+// Small key/value store for runtime config the box must hot-read across restarts, keyed by string.
+// Today it holds the live Predict deploy record ("deployment.<network>"): the deployer writes a fresh
+// record here after a devnet wipe, and the box (which shares this DB) reloads the new ids on its next
+// boot, so a redeploy never needs a Dokploy env paste. See src/lib/deployment-store.ts.
+model AppConfig {
+  key       String   @id
+  value     String   @db.Text
+  updatedAt DateTime @updatedAt
+}
+
+model ErrorLog {
+  id         String   @id @default(cuid())
+  errorCode  String
+  message    String
+  statusCode Int
+  stack      String?  @db.Text
+  context    String?  @db.Text
+  userId     String?
+  method     String?
+  path       String?
+  userAgent  String?  @db.Text
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  @@index([errorCode])
+  @@index([createdAt])
+}
+
+// Product analytics. Append-only, one row per discrete user action, name bound to the catalog
+// allowlist in src/config/analytics-catalog.ts. Identity and time are server-stamped, never read
+// from the client body. See bigdev/plans/cont/03-ADMIN-DASHBOARD.md §2.2.
+model Event {
+  id        String   @id @default(cuid())
+  name      String                          // namespaced, rejected at ingest if not in the catalog
+  userId    String?                         // server-stamped from the JWT
+  anonId    String?                         // client uuid, survives login so the pre-auth funnel joins
+  sessionId String                          // client-generated, rotates after 30m idle
+  props     Json?                           // depth 1, <=16 keys, <=2KB (§3.3)
+  platform  String                          // ios | android | desktop | pwa, derived from the UA
+  source    String                          // web | backend
+  release   String?
+  network   String
+  ts        DateTime @default(now())        // server clock
+
+  @@index([name, ts])
+  @@index([userId, ts])
+  @@index([sessionId, ts])
+}
+
+// One row per distinct bug, keyed by the §3.1 fingerprint. This is the "10 errors show as 1" table:
+// count is the true occurrence total, ErrorEvent only keeps the newest samples. Small, kept forever.
+model ErrorGroup {
+  fingerprint   String    @id
+  title         String
+  culprit       String?                       // src/services/plays.ts:235, or a worker name
+  kind          String                        // http | worker | chain | client | job
+  level         String                        // fatal | error | warn
+  count         Int       @default(0)
+  usersAffected Int       @default(0)
+  firstSeen     DateTime  @default(now())
+  lastSeen      DateTime  @default(now())
+  status        String    @default("open")    // open | ack | resolved | ignored
+  resolvedAt    DateTime?
+  firstRelease  String?
+  lastRelease   String?
+  notes         String?   @db.Text
+
+  samples       ErrorEvent[]
+
+  @@index([status, lastSeen])
+  @@index([level, lastSeen])
+}
+
+// Individual occurrences, capped at the newest N per fingerprint (retention.samples_per_group).
+// A bug that fires 10,000 times costs 1 group row plus N samples, not 10,000 rows.
+model ErrorEvent {
+  id          String     @id @default(cuid())
+  fingerprint String
+  group       ErrorGroup @relation(fields: [fingerprint], references: [fingerprint], onDelete: Cascade)
+  message     String                          // raw; only the normalized form feeds the hash
+  stack       String?    @db.Text
+  context     Json?                           // redacted, capped
+  userId      String?
+  sessionId   String?                         // the join key for "what the user was doing"
+  requestId   String?                         // Fastify request id, ties to the access log
+  method      String?
+  path        String?
+  playId      String?
+  release     String?
+  network     String?
+  createdAt   DateTime   @default(now())
+
+  @@index([fingerprint, createdAt])
+  @@index([playId])
+}

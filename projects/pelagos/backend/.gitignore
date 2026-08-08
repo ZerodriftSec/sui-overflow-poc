@@ -1,0 +1,18 @@
+node_modules/
+dist/
+.env
+.env.testnet
+.env.mainnet
+!.env.example
+!.env.testnet.example
+
+# Sandbox verification artifacts (not needed locally)
+tsconfig.verify.json
+src/@types/
+
+# Uploaded receipts / evidence (runtime data, not source)
+uploads/
+state/
+.sim-positions.json
+.ppn-maturity.json
+.predict-managers-*.json

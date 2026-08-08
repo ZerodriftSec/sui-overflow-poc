@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1200" height="320" viewBox="0 0 1200 320" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="NodeRails logo white">
+  <defs>
+    <linearGradient id="nr-grad" x1="20" y1="20" x2="300" y2="300" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="0.5" stop-color="#F5F5F5"/>
+      <stop offset="1" stop-color="#E5E7EB"/>
+    </linearGradient>
+    <linearGradient id="rail-grad" x1="80" y1="86" x2="248" y2="234" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.98"/>
+      <stop offset="1" stop-color="#E5E7EB" stop-opacity="0.9"/>
+    </linearGradient>
+    <filter id="soft-shadow" x="0" y="0" width="340" height="340" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#9CA3AF" flood-opacity="0.25"/>
+    </filter>
+  </defs>
+
+  <g filter="url(#soft-shadow)">
+    <rect x="24" y="24" width="272" height="272" rx="64" fill="url(#nr-grad)"/>
+
+    <rect x="72" y="84" width="176" height="26" rx="13" fill="url(#rail-grad)"/>
+    <rect x="72" y="146" width="176" height="26" rx="13" fill="url(#rail-grad)"/>
+    <rect x="72" y="208" width="176" height="26" rx="13" fill="url(#rail-grad)"/>
+
+    <circle cx="100" cy="97" r="7" fill="#9CA3AF"/>
+    <circle cx="156" cy="97" r="7" fill="#9CA3AF"/>
+    <circle cx="212" cy="97" r="7" fill="#9CA3AF"/>
+
+    <circle cx="100" cy="159" r="7" fill="#9CA3AF"/>
+    <circle cx="156" cy="159" r="7" fill="#9CA3AF"/>
+    <circle cx="212" cy="159" r="7" fill="#9CA3AF"/>
+
+    <circle cx="100" cy="221" r="7" fill="#9CA3AF"/>
+    <circle cx="156" cy="221" r="7" fill="#9CA3AF"/>
+    <circle cx="212" cy="221" r="7" fill="#9CA3AF"/>
+  </g>
+
+  <g>
+    <text x="352" y="178" fill="#111827" font-family="Inter, Segoe UI, Helvetica Neue, Arial, sans-serif" font-size="132" font-weight="800" letter-spacing="-2">
+      Node<tspan fill="#6B7280">Rails</tspan>
+    </text>
+    <text x="356" y="230" fill="#4B5563" font-family="Inter, Segoe UI, Helvetica Neue, Arial, sans-serif" font-size="34" font-weight="600" letter-spacing="7">
+      CRYPTO PAYMENT INFRASTRUCTURE
+    </text>
+  </g>
+</svg>

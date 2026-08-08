@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" fill="none" aria-labelledby="nr-title">
+  <title id="nr-title">NodeRails Network</title>
+  <rect x="2" y="2" width="60" height="60" rx="16" fill="#3B82F6"/>
+  <rect x="10" y="17" width="44" height="8" rx="4" fill="#FFFFFF" fill-opacity="0.28"/>
+  <circle cx="18" cy="21" r="2.2" fill="#FFFFFF"/>
+  <circle cx="32" cy="21" r="2.2" fill="#FFFFFF"/>
+  <circle cx="46" cy="21" r="2.2" fill="#FFFFFF"/>
+  <rect x="10" y="29" width="44" height="8" rx="4" fill="#FFFFFF" fill-opacity="0.28"/>
+  <circle cx="18" cy="33" r="2.2" fill="#FFFFFF"/>
+  <circle cx="32" cy="33" r="2.2" fill="#FFFFFF"/>
+  <circle cx="46" cy="33" r="2.2" fill="#FFFFFF"/>
+  <rect x="10" y="41" width="44" height="8" rx="4" fill="#FFFFFF" fill-opacity="0.28"/>
+  <circle cx="18" cy="45" r="2.2" fill="#FFFFFF"/>
+  <circle cx="32" cy="45" r="2.2" fill="#FFFFFF"/>
+  <circle cx="46" cy="45" r="2.2" fill="#FFFFFF"/>
+</svg>

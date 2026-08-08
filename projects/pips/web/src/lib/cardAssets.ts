@@ -1,0 +1,92 @@
+// Shared image + font loading for the canvas share cards (playCard.ts, shareCard.ts).
+// Two rules learned on mobile Safari: always await img.decode() before drawImage (onload fires before the
+// bitmap is ready, which painted all-white cards), and cache loads module-level so reopening the sheet or
+// flipping the PnL toggle re-renders instantly instead of re-fetching.
+
+const cache = new Map<string, Promise<HTMLImageElement | null>>()
+
+function load(src: string, cors: boolean): Promise<HTMLImageElement | null> {
+  return new Promise((resolve) => {
+    const img = new Image()
+    if (cors) img.crossOrigin = 'anonymous'
+    img.onload = () => img.decode().then(() => resolve(img), () => resolve(img))
+    img.onerror = () => resolve(null)
+    img.src = src
+  })
+}
+
+function cached(src: string, cors: boolean): Promise<HTMLImageElement | null> {
+  let p = cache.get(src)
+  if (!p) {
+    p = load(src, cors)
+    // A failed load (offline blip) must not poison the cache; drop it so the next render retries.
+    void p.then((img) => {
+      if (!img) cache.delete(src)
+    })
+    cache.set(src, p)
+  }
+  return p
+}
+
+export function loadImage(src: string): Promise<HTMLImageElement | null> {
+  return cached(src, false)
+}
+
+// Cross-origin (avatar) load: crossOrigin='anonymous' so a non-CORS host fails the load cleanly instead of
+// tainting the canvas (toBlob would throw). Callers fall back to the identicon on null.
+export function loadImageCors(src: string): Promise<HTMLImageElement | null> {
+  return cached(src, true)
+}
+
+const tintCache = new Map<string, Promise<HTMLCanvasElement | null>>()
+
+// Rasterizes a single-color SVG (fill="white") and recolors it via source-in compositing, so a canvas
+// card can tint the same public icon assets the DOM masks to currentColor, no second copy of the art.
+export function loadTintedIcon(src: string, color: string, size: number): Promise<HTMLCanvasElement | null> {
+  const key = `${src}|${color}|${size}`
+  let p = tintCache.get(key)
+  if (!p) {
+    p = loadImage(src).then((img) => {
+      if (!img) return null
+      const canvas = document.createElement('canvas')
+      canvas.width = size
+      canvas.height = size
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return null
+      ctx.drawImage(img, 0, 0, size, size)
+      ctx.globalCompositeOperation = 'source-in'
+      ctx.fillStyle = color
+      ctx.fillRect(0, 0, size, size)
+      return canvas
+    })
+    void p.then((canvas) => {
+      if (!canvas) tintCache.delete(key)
+    })
+    tintCache.set(key, p)
+  }
+  return p
+}
+
+// Load just the faces a card draws. Never document.fonts.ready (it waits for every font on the page); the
+// race caps a stalled font fetch so the card can always render with fallback faces.
+export function loadCardFonts(specs: Array<string>, timeoutMs = 2000): Promise<unknown> {
+  if (typeof document === 'undefined') return Promise.resolve()
+  const all = Promise.all(specs.map((s) => document.fonts.load(s).catch(() => [])))
+  return Promise.race([all, new Promise((r) => setTimeout(r, timeoutMs))])
+}
+
+// Warm the heavy card art ahead of the share sheet so the first open renders instantly: the four
+// composite layers + the baked classic consoles (the stock-rig fast path and the WebGL-dead
+// fallback), plus the user's own console shots (usually an IndexedDB hit; WebGL only on a cold rig).
+// Dynamic import keeps the cardAssets<->consoleShot dependency one-way at module load.
+export function preloadPlayCardAssets(): void {
+  void loadImage('/assets/pnl-card/under-win.webp')
+  void loadImage('/assets/pnl-card/under-lose.webp')
+  void loadImage('/assets/pnl-card/over-win.webp')
+  void loadImage('/assets/pnl-card/over-lose.webp')
+  void import('@/lib/consoleShot').then((m) => {
+    void loadImage(m.CLASSIC_SRC('win')) // one source for the baked path, it carries a cache-busting suffix
+    void loadImage(m.CLASSIC_SRC('rekt'))
+    m.warmConsoleShot()
+  })
+}

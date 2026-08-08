@@ -1,0 +1,226 @@
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { useEffect, useRef, useState, type ChangeEvent } from 'react'
+import { Camera, X } from 'lucide-react'
+import { MenuScreen, prepareMenuTransition } from '@/components/menu/shared'
+import { afterMenuSlide } from '@/components/console/MenuDrawer'
+import { XBadgeGlyph } from '@/components/menu/BrandGlyphs'
+import { Avatar } from '@/components/Avatar'
+import { Hw3DButton } from '@/ui/Hardware3D'
+import { ApiError, api } from '@/lib/api'
+import { useAuth } from '@/lib/auth'
+import { haptic } from '@/lib/haptics'
+import { toSquareWebp } from '@/lib/avatar'
+import { displayHandle } from '@/utils/format'
+import { cnm } from '@/utils/style'
+
+// Profile editor: avatar + handle. Plain App-Surface page in the drawer (from the pen on the Player Card),
+// not the device screen. Photo is client-shrunk to a 500x500 webp, or clears back to the PIPS identicon; no display name.
+export const Route = createFileRoute('/_app/menu/username')({ component: UsernameScreen })
+
+const HANDLE_RE = /^[a-zA-Z0-9_]{3,20}$/
+
+function UsernameScreen() {
+  const navigate = useNavigate()
+  const { user, refresh } = useAuth()
+  const current = (user?.username ?? '').toLowerCase()
+  const [name, setName] = useState(current)
+  const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [avatarBusy, setAvatarBusy] = useState(false)
+  const [avatarErr, setAvatarErr] = useState<string | null>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  // Never autoFocus: React fires it at the commit, while the page is still parked off-screen right, and
+  // the scroll-to-caret plus the iOS keyboard resizing the viewport tear the slide apart.
+  useEffect(() => afterMenuSlide(() => inputRef.current?.focus()), [])
+
+  const trimmed = name.trim()
+  const valid = HANDLE_RE.test(trimmed)
+  const dirty = trimmed !== current
+
+  // Reads off the auth user (server-verified, synced through /auth/link/refresh), never Privy
+  // directly: this screen also has to work in dev/demo, where no Privy provider is mounted.
+  const twitterHandle = user?.twitter?.username ?? null
+  const verified = Boolean(twitterHandle && current === twitterHandle.toLowerCase())
+
+  // Pick a photo -> shrink to a 500x500 webp client-side -> upload -> refresh the session user. The
+  // file input is reset so re-picking the same file still fires. Errors surface inline, never a crash.
+  const onFile = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file || avatarBusy) return
+    setAvatarBusy(true)
+    setAvatarErr(null)
+    haptic('medium')
+    try {
+      const dataUrl = await toSquareWebp(file)
+      await api.uploadAvatar(dataUrl)
+      await refresh()
+      haptic('success')
+    } catch (err) {
+      haptic('error')
+      setAvatarErr(
+        err instanceof ApiError && err.code === 'UPLOADS_DISABLED'
+          ? 'Photo uploads are unavailable right now.'
+          : err instanceof ApiError && (err.code === 'INVALID_IMAGE' || err.code === 'IMAGE_TOO_LARGE')
+            ? 'That image did not work. Try another.'
+            : err instanceof Error
+              ? err.message
+              : 'Could not update your photo.',
+      )
+    } finally {
+      setAvatarBusy(false)
+    }
+  }
+
+  // Clear the custom photo, reverting to the PIPS identicon.
+  const removeAvatar = async () => {
+    if (avatarBusy) return
+    setAvatarBusy(true)
+    setAvatarErr(null)
+    haptic('rigid')
+    try {
+      await api.removeAvatar()
+      await refresh()
+      haptic('success')
+    } catch {
+      haptic('error')
+      setAvatarErr('Could not remove your photo.')
+    } finally {
+      setAvatarBusy(false)
+    }
+  }
+
+  const save = async () => {
+    if (saving || !valid || !dirty) return
+    setSaving(true)
+    setError(null)
+    haptic('medium')
+    try {
+      await api.setUsername(trimmed)
+      await refresh()
+      haptic('success')
+      prepareMenuTransition('back')
+      void navigate({ to: '/menu' })
+    } catch (e) {
+      setSaving(false)
+      haptic('error')
+      setError(
+        e instanceof ApiError && e.code === 'USERNAME_TAKEN'
+          ? 'That handle is taken'
+          : 'Could not save that. Try again.',
+      )
+    }
+  }
+
+  return (
+    <MenuScreen title="Profile">
+      <div className="flex flex-col gap-5">
+        <div className="flex flex-col items-center gap-3 pt-1">
+          <div className="relative">
+            <Avatar
+              name={displayHandle(user)}
+              src={user?.avatarUrl}
+              size={104}
+              className={cnm('ring-2 ring-white/10 transition-opacity', avatarBusy && 'opacity-50')}
+            />
+            {user?.customAvatar && (
+              <button
+                type="button"
+                onClick={removeAvatar}
+                disabled={avatarBusy}
+                aria-label="Remove photo"
+                className="absolute -right-1 -top-1 flex h-7 w-7 items-center justify-center rounded-full bg-down text-white shadow-[0_2px_8px_rgba(0,0,0,0.45)] ring-2 ring-black transition active:scale-90 disabled:opacity-50"
+              >
+                <X className="h-4 w-4" strokeWidth={3} />
+              </button>
+            )}
+          </div>
+          <label
+            onClick={() => haptic('selection')}
+            className={cnm(
+              'inline-flex cursor-pointer items-center gap-1.5 rounded-full bg-white/[0.06] px-3.5 py-2 text-[13px] font-bold text-text-2 transition active:scale-95',
+              avatarBusy && 'pointer-events-none opacity-50',
+            )}
+          >
+            <Camera className="h-4 w-4" strokeWidth={2.4} />
+            {avatarBusy ? 'Working…' : user?.customAvatar ? 'Change photo' : 'Add photo'}
+            <input type="file" accept="image/*" className="hidden" onChange={onFile} disabled={avatarBusy} />
+          </label>
+          {avatarErr && <p className="text-[13px] font-semibold text-down">{avatarErr}</p>}
+        </div>
+
+        <p className="px-1 text-[15px] leading-snug text-text-2">
+          This is how you show up across PIPS. 3 to 20 letters, numbers, or underscores.
+        </p>
+
+        <div className="card-neo rounded-card p-5">
+          <div className="flex items-center gap-1">
+            <span className="text-[28px] font-black leading-none text-text-3">@</span>
+            <input
+              ref={inputRef}
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value.replace(/\s/g, '').toLowerCase())
+                if (error) setError(null)
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void save()
+              }}
+              maxLength={20}
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              placeholder="yourname"
+              aria-label="Handle"
+              className="min-w-0 flex-1 bg-transparent text-[28px] font-extrabold tracking-tight text-text placeholder:text-text-3/40 focus:outline-none"
+              style={{ caretColor: 'var(--color-brand-500)' }}
+            />
+          </div>
+          <div className="mt-3 h-px w-full bg-white/[0.08]" />
+          <div className="mt-2.5 h-4 text-[13px] font-semibold">
+            {error ? (
+              <span className="text-down">{error}</span>
+            ) : valid && dirty ? (
+              <span className="text-up">Looks good</span>
+            ) : (
+              <span className="text-text-3">Type your username</span>
+            )}
+          </div>
+        </div>
+
+        {twitterHandle && (
+          <div className="-mt-2 flex items-center gap-2 px-1">
+            {verified ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-up/15 px-2 py-0.5 text-xs font-bold text-up">
+                <XBadgeGlyph className="h-3.5 w-3.5" />
+                Verified
+              </span>
+            ) : (
+              <Hw3DButton
+                size="sm"
+                onPress={() => {
+                  setName(twitterHandle)
+                  if (error) setError(null)
+                }}
+              >
+                Use your X username
+              </Hw3DButton>
+            )}
+          </div>
+        )}
+
+        <Hw3DButton
+          variant="primary"
+          wide
+          disabled={!valid || !dirty}
+          loading={saving}
+          haptic="medium"
+          onPress={() => void save()}
+        >
+          Save handle
+        </Hw3DButton>
+      </div>
+    </MenuScreen>
+  )
+}

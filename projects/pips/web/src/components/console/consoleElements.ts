@@ -1,0 +1,1174 @@
+import * as THREE from 'three'
+import { roundedRect, roundedRectPath, circlePath, frontZeroed, setBoxUVs } from './consoleGeo'
+
+// Pure geometry/mesh factories for the handheld's controls: builds meshes, parents them to `device`,
+// registers raycast targets. ConsoleCanvas owns placement/scene/interaction; this file only owns shapes.
+
+export interface ButtonCfg {
+  w: number; h: number; r: number; depth: number
+  dx: number; dy: number; baseZ: number; pressedZ: number; pad: number
+}
+
+// knob + number-wheel pockets share one shape: pixel center, footprint, corner radius, rim pad.
+export interface PocketCfg {
+  px: number; py: number; w: number; h: number; r: number; pad: number
+}
+
+// Only the fields the knob geometry reads; the canvas keeps the full `kp` (drag/snap tuning live here too).
+export interface KnobParams {
+  ridgeWidth: number; grooveWidth: number; bumpScale: number; ridgeRepeat: number
+  cornerCurve: number; radius: number; height: number; edgeCurve: number; ridgeLength: number
+}
+
+type Px = (n: number) => number
+
+function makeButton(
+  device: THREE.Group, interactive: THREE.Mesh[],
+  cx: number, cy: number, w: number, h: number, cornerR: number,
+  baseZ: number, pressedZ: number, depth: number, color: number, glow: number,
+): THREE.Mesh {
+  const mat = new THREE.MeshStandardMaterial({
+    color, roughness: 0.5, metalness: 0,
+    emissive: new THREE.Color(glow), emissiveIntensity: 0,
+  })
+  const mesh = new THREE.Mesh(frontZeroed(roundedRect(w, h, cornerR), depth, 0.06), mat)
+  mesh.position.set(cx, cy, baseZ)
+  mesh.castShadow = true
+  mesh.receiveShadow = true
+  mesh.userData = { kind: 'button', baseZ, pressedZ, depth, pressed: false, glow: 0 }
+  device.add(mesh)
+  interactive.push(mesh)
+  return mesh
+}
+
+// The five face buttons (main, two action pills, two nav pills) plus their pocket floors; returned in BTN_PX order so the canvas indexes them as bm[0..4].
+export function createButtons(
+  device: THREE.Group, interactive: THREE.Mesh[], matPocket: THREE.Material,
+  buttons: ButtonCfg[], BTN_PX: { x: number; y: number }[],
+  colors: { color: number; glow: number }[], wx: Px, wy: Px,
+): THREE.Mesh[] {
+  const bm = BTN_PX.map((p, i) =>
+    makeButton(
+      device, interactive, wx(p.x), wy(p.y),
+      buttons[i].w, buttons[i].h, buttons[i].r,
+      buttons[i].baseZ, buttons[i].pressedZ, buttons[i].depth,
+      colors[i].color, colors[i].glow,
+    ),
+  )
+
+  // pocket floors: dark inset plane visible in the gap between button edge and chamfered rim
+  bm.forEach((btn, i) => {
+    const c = buttons[i]
+    const pad = c.pad
+    const fw = c.w + pad * 2 - 0.04
+    const fh = c.h + pad * 2 - 0.04
+    const fr = Math.min(c.r + pad, fw / 2, fh / 2)
+    const floor = new THREE.Mesh(new THREE.ShapeGeometry(roundedRect(fw, fh, fr), 48), matPocket)
+    floor.position.set(btn.position.x, btn.position.y, -0.04)
+    floor.receiveShadow = true
+    device.add(floor)
+  })
+
+  return bm
+}
+
+// Lathe knob: pocket floor, chamfered bevel ring, ridged drag texture, and the slab; returns handles plus the rebuild closures the GUI drives.
+export function createKnob(
+  device: THREE.Group, interactive: THREE.Mesh[], matPocket: THREE.Material,
+  matKnob: THREE.MeshStandardMaterial, kp: KnobParams, knobPocket: PocketCfg,
+  wx: Px, wy: Px, bodyZ: number,
+) {
+  /* pocket floor */
+  const kfw = knobPocket.w + knobPocket.pad * 2 - 0.04
+  const kfh = knobPocket.h + knobPocket.pad * 2 - 0.04
+  const knobFloor = new THREE.Mesh(
+    new THREE.ShapeGeometry(roundedRect(kfw, kfh, Math.min(knobPocket.r + knobPocket.pad, kfw / 2, kfh / 2)), 48),
+    matPocket,
+  )
+  knobFloor.position.set(wx(knobPocket.px), wy(knobPocket.py), bodyZ - 0.04)
+  knobFloor.receiveShadow = true
+  device.add(knobFloor)
+
+  // pocket bevel: a chamfered ring sloping from the front face into the pocket so the rim reads as a
+  // machined recess. Outer ring matches the body hole, inner ring sits `pad` deep (45 degree slope).
+  {
+    const ow = knobPocket.w + knobPocket.pad * 2
+    const oh = knobPocket.h + knobPocket.pad * 2
+    const or_ = Math.min(knobPocket.r + knobPocket.pad, ow / 2, oh / 2)
+    const iw = knobPocket.w, ih = knobPocket.h, ir = knobPocket.r
+    const bD = knobPocket.pad // depth = pad → 45° slope
+    const S = 12
+
+    function ringPts(w: number, h: number, r: number, z: number): number[] {
+      const hw = w / 2, hh = h / 2, v: number[] = []
+      const corners: [number, number, number][] = [
+        [hw - r, hh - r, 0], [-hw + r, hh - r, Math.PI / 2],
+        [-hw + r, -hh + r, Math.PI], [hw - r, -hh + r, 3 * Math.PI / 2],
+      ]
+      for (const [cx, cy, a0] of corners)
+        for (let i = 0; i < S; i++) {
+          const a = a0 + (i / S) * (Math.PI / 2)
+          v.push(cx + r * Math.cos(a), cy + r * Math.sin(a), z)
+        }
+      return v
+    }
+
+    const N = S * 4
+    const verts = [...ringPts(ow, oh, or_, 0), ...ringPts(iw, ih, ir, -bD)]
+    const idx: number[] = []
+    for (let i = 0; i < N; i++) {
+      const j = (i + 1) % N
+      idx.push(i, N + i, j, j, N + i, N + j)
+    }
+    const bevelGeo = new THREE.BufferGeometry()
+    bevelGeo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3))
+    bevelGeo.setIndex(idx)
+    bevelGeo.computeVertexNormals()
+    const knobBevel = new THREE.Mesh(bevelGeo, matPocket)
+    knobBevel.position.set(wx(knobPocket.px), wy(knobPocket.py), 0)
+    knobBevel.receiveShadow = true
+    device.add(knobBevel)
+  }
+
+  /* ridge bump texture */
+  const bumpc = document.createElement('canvas')
+  bumpc.width = 128
+  bumpc.height = 128
+  const bx = bumpc.getContext('2d')!
+  const knobBump = new THREE.CanvasTexture(bumpc)
+  knobBump.wrapS = knobBump.wrapT = THREE.RepeatWrapping
+
+  function redrawBump() {
+    const img = bx.createImageData(128, 128)
+    const pitch = kp.ridgeWidth + kp.grooveWidth
+    // ridges occupy a centered fraction (ridgeLength) of the V range; the rounded ends stay flat (255)
+    const margin = (1 - kp.ridgeLength) / 2
+    const lo = margin * 128, hi = (1 - margin) * 128
+    for (let y = 0; y < 128; y++) {
+      for (let x = 0; x < 128; x++) {
+        let v = 255
+        if (y >= lo && y <= hi) {
+          const phase = x % pitch
+          if (phase < kp.grooveWidth) {
+            const t = phase / kp.grooveWidth
+            v = Math.round((1 - Math.sin(t * Math.PI)) * kp.cornerCurve * 255)
+          }
+        }
+        const i = (y * 128 + x) * 4
+        img.data[i] = img.data[i + 1] = img.data[i + 2] = v
+        img.data[i + 3] = 255
+      }
+    }
+    bx.putImageData(img, 0, 0)
+    knobBump.needsUpdate = true
+  }
+  redrawBump()
+
+  const matKnobSlab = matKnob.clone()
+  matKnobSlab.bumpMap = knobBump
+  matKnobSlab.bumpScale = kp.bumpScale
+  matKnobSlab.roughness = 0.88
+  knobBump.repeat.set(kp.ridgeRepeat, 1)
+
+  // Quarter-circle rounds at each end of the profile; LatheGeometry has no flat cap faces, so the ridge bump never bleeds a UV stripe like a capped cylinder would.
+  function knobProfile(): THREE.Vector2[] {
+    const { radius, height, edgeCurve: r } = kp
+    const pts: THREE.Vector2[] = []
+    pts.push(new THREE.Vector2(0, -height / 2))
+    for (let i = 0; i <= 12; i++) {
+      const a = -Math.PI / 2 + (i / 12) * (Math.PI / 2)
+      pts.push(new THREE.Vector2(radius - r + r * Math.cos(a), -height / 2 + r + r * Math.sin(a)))
+    }
+    pts.push(new THREE.Vector2(radius, height / 2 - r))
+    for (let i = 1; i <= 12; i++) {
+      const a = (i / 12) * (Math.PI / 2)
+      pts.push(new THREE.Vector2(radius - r + r * Math.cos(a), height / 2 - r + r * Math.sin(a)))
+    }
+    pts.push(new THREE.Vector2(0, height / 2))
+    return pts
+  }
+
+  const knobSlab = new THREE.Mesh(new THREE.LatheGeometry(knobProfile(), 64), matKnobSlab)
+  knobSlab.rotation.z = Math.PI / 2
+  knobSlab.position.set(wx(975), wy(1960), -0.5)
+  knobSlab.castShadow = true
+  knobSlab.receiveShadow = true
+  knobSlab.userData = { kind: 'knob' }
+  device.add(knobSlab)
+  interactive.push(knobSlab)
+
+  return { knobSlab, knobBump, matKnobSlab, redrawBump, knobProfile }
+}
+
+// Compact number drum: pocket floor, beveled housing, and a curved drum on a horizontal axle whose
+// values wrap like a mechanical counter. The canvas hangs digit labels off `numberWheelRoll` and spins it.
+export function createNumberWheel(
+  device: THREE.Group, interactive: THREE.Mesh[], matPocket: THREE.Material,
+  numberWheelPocket: PocketCfg, wx: Px, wy: Px, bodyZ: number,
+) {
+  const nfw = numberWheelPocket.w + numberWheelPocket.pad * 2 - 0.04
+  const nfh = numberWheelPocket.h + numberWheelPocket.pad * 2 - 0.04
+  const numberWheelFloor = new THREE.Mesh(
+    new THREE.ShapeGeometry(
+      roundedRect(nfw, nfh, Math.min(numberWheelPocket.r + numberWheelPocket.pad, nfw / 2, nfh / 2)),
+      48,
+    ),
+    matPocket,
+  )
+  numberWheelFloor.position.set(wx(numberWheelPocket.px), wy(numberWheelPocket.py), bodyZ - 0.04)
+  numberWheelFloor.receiveShadow = true
+  device.add(numberWheelFloor)
+
+  const numberWheelHousingShape = roundedRect(numberWheelPocket.w, numberWheelPocket.h, numberWheelPocket.r)
+  numberWheelHousingShape.holes.push(roundedRectPath(0, 0, 0.78, 0.74, 0.085))
+  const matWheelHousing = new THREE.MeshStandardMaterial({ color: 0x080808, roughness: 0.58, metalness: 0.08 })
+  const numberWheelHousing = new THREE.Mesh(
+    frontZeroed(numberWheelHousingShape, 0.24, 0.025),
+    matWheelHousing,
+  )
+  numberWheelHousing.position.set(wx(numberWheelPocket.px), wy(numberWheelPocket.py), 0.12)
+  numberWheelHousing.castShadow = true
+  numberWheelHousing.receiveShadow = true
+  device.add(numberWheelHousing)
+
+  const numberWheelRoll = new THREE.Group()
+  numberWheelRoll.position.set(wx(numberWheelPocket.px), wy(numberWheelPocket.py), -0.14)
+  device.add(numberWheelRoll)
+
+  const matWheelDrum = new THREE.MeshStandardMaterial({ color: 0x171717, roughness: 0.42, metalness: 0.18 })
+  const numberWheelDrum = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.37, 0.37, 0.76, 64, 1, false),
+    matWheelDrum,
+  )
+  numberWheelDrum.rotation.z = Math.PI / 2
+  numberWheelDrum.castShadow = true
+  numberWheelDrum.receiveShadow = true
+  numberWheelDrum.userData = { kind: 'numberWheel' }
+  numberWheelRoll.add(numberWheelDrum)
+  interactive.push(numberWheelDrum)
+
+  return { numberWheelHousing, numberWheelRoll, numberWheelDrum, matWheelHousing, matWheelDrum }
+}
+
+// Turns the flat action caps into framed mini-screens: a metal bezel, the cap recessed as the lit LCD,
+// and a domed acrylic window parented to the cap. The cap stays bm[i], still the raycast target.
+export function createActionScreens(
+  device: THREE.Group, bm: THREE.Mesh[], indices: number[],
+  buttons: ButtonCfg[], BTN_PX: { x: number; y: number }[], wx: Px, wy: Px,
+  // Screen overlays draw depth-test-free so the label stays crisp over the glossy acrylic, but that
+  // bleeds through the body when spun. The export tool opts into real occlusion (`occlude`) to fix this.
+  occlude = false,
+): { dispose(): void; glow: Record<number, THREE.MeshBasicMaterial> } {
+  const trash: { dispose(): void }[] = []
+  // Shared so both screens read as the same part; no envMap in the scene, so metalness stays moderate (fully metallic would go black).
+  const bezelMat = new THREE.MeshStandardMaterial({ color: 0x44474e, metalness: 0.82, roughness: 0.34 })
+  const screwMat = new THREE.MeshStandardMaterial({ color: 0x767a83, metalness: 0.9, roughness: 0.28 })
+  const screwGeo = new THREE.CylinderGeometry(0.032, 0.038, 0.04, 16)
+  screwGeo.rotateX(Math.PI / 2) // axis Y → faces the camera (+z)
+  trash.push(bezelMat, screwMat, screwGeo)
+
+  const FRAME = 0.1 // metal rim thickness: just enough to read as a machined bezel, screen takes the rest
+
+  // Faint glass glint from the upper-left key light, kept low so it reads as a sheen, not a glare blowing out the screen.
+  const sheenCanvas = document.createElement('canvas')
+  sheenCanvas.width = sheenCanvas.height = 256
+  const sg = sheenCanvas.getContext('2d')!
+  const grad = sg.createRadialGradient(74, 56, 4, 110, 120, 150)
+  grad.addColorStop(0, 'rgba(255,255,255,0.5)')
+  grad.addColorStop(0.5, 'rgba(255,255,255,0.1)')
+  grad.addColorStop(1, 'rgba(255,255,255,0)')
+  sg.fillStyle = grad
+  sg.fillRect(0, 0, 256, 256)
+  const sheenTex = new THREE.CanvasTexture(sheenCanvas)
+  sheenTex.colorSpace = THREE.SRGBColorSpace
+  const sheenMat = new THREE.MeshBasicMaterial({
+    map: sheenTex, transparent: true, opacity: 0.16, depthWrite: false, depthTest: occlude,
+    blending: THREE.AdditiveBlending,
+  })
+  const sheenGeo = new THREE.PlaneGeometry(1, 1)
+  trash.push(sheenTex, sheenMat, sheenGeo)
+
+  // CRT face: horizontal scanlines + edge vignette baked once, darkening the lit color in bands so it reads as a real display behind glass.
+  const crtCanvas = document.createElement('canvas')
+  crtCanvas.width = crtCanvas.height = 256
+  const cg = crtCanvas.getContext('2d')!
+  cg.clearRect(0, 0, 256, 256)
+  cg.fillStyle = 'rgba(0,0,0,0.5)'
+  for (let y = 0; y < 256; y += 8) cg.fillRect(0, y, 256, 3) // ~32 scanlines (3px line, 5px gap)
+  const vig = cg.createRadialGradient(128, 120, 56, 128, 128, 178)
+  vig.addColorStop(0, 'rgba(0,0,0,0)')
+  vig.addColorStop(1, 'rgba(0,0,0,0.5)')
+  cg.fillStyle = vig
+  cg.fillRect(0, 0, 256, 256)
+  const crtTex = new THREE.CanvasTexture(crtCanvas)
+  crtTex.colorSpace = THREE.SRGBColorSpace
+  const crtMat = new THREE.MeshBasicMaterial({ map: crtTex, transparent: true, opacity: 0.6, depthWrite: false, depthTest: occlude })
+  const crtGeo = new THREE.PlaneGeometry(1, 1)
+  trash.push(crtTex, crtMat, crtGeo)
+
+  // Bloom: a soft glow bleeding the screen color onto the frame, the light spill a lit display gives
+  // off. One per screen, tinted live by the canvas so a dark screen barely glows, green/red strongly.
+  const haloCanvas = document.createElement('canvas')
+  haloCanvas.width = haloCanvas.height = 128
+  const hg = haloCanvas.getContext('2d')!
+  const hgrad = hg.createRadialGradient(64, 64, 6, 64, 64, 64)
+  hgrad.addColorStop(0, 'rgba(255,255,255,1)')
+  hgrad.addColorStop(0.5, 'rgba(255,255,255,0.45)')
+  hgrad.addColorStop(1, 'rgba(255,255,255,0)')
+  hg.fillStyle = hgrad
+  hg.fillRect(0, 0, 128, 128)
+  const haloTex = new THREE.CanvasTexture(haloCanvas)
+  const haloGeo = new THREE.PlaneGeometry(1, 1)
+  trash.push(haloTex, haloGeo)
+  const glow: Record<number, THREE.MeshBasicMaterial> = {}
+
+  for (const i of indices) {
+    const c = buttons[i]
+    const cx = wx(BTN_PX[i].x), cy = wy(BTN_PX[i].y)
+    const frontZ = c.baseZ + 0.18 // bezel face stands proud; the cap (at baseZ) reads as recessed glass
+
+    const outerW = c.w + c.pad * 2 - 0.06, outerH = c.h + c.pad * 2 - 0.06 // fills the body hole
+    const innerW = outerW - FRAME * 2, innerH = outerH - FRAME * 2 // slim rim; window still overlaps the cap
+    const frame = roundedRect(outerW, outerH, 0.18)
+    frame.holes.push(roundedRectPath(0, 0, innerW, innerH, 0.13))
+    const bezelGeo = frontZeroed(frame, 0.22, 0.025)
+    const bezel = new THREE.Mesh(bezelGeo, bezelMat)
+    bezel.position.set(cx, cy, frontZ)
+    bezel.castShadow = true
+    bezel.receiveShadow = true
+    device.add(bezel)
+    trash.push(bezelGeo)
+
+    // Four corner screws, the machined detail the references lean on, tiny and low so they read as
+    // hardware not buttons. Seated on the frame corner's diagonal midline so they don't crowd the window edge.
+    const sx = outerW / 2 - 0.095, sy = outerH / 2 - 0.095
+    for (const [dx, dy] of [[-sx, sy], [sx, sy], [-sx, -sy], [sx, -sy]]) {
+      const screw = new THREE.Mesh(screwGeo, screwMat)
+      screw.position.set(cx + dx, cy + dy, frontZ + 0.01)
+      screw.castShadow = true
+      device.add(screw)
+    }
+
+    // Domed acrylic window: a bevel wider than its depth so the top pillows with a specular streak,
+    // selling the gloss without an envMap. Clear and parented to the cap, so it sinks on press.
+    const acrGeo = frontZeroed(roundedRect(innerW - 0.04, innerH - 0.04, 0.16), 0.05, 0.07)
+    const acrMat = new THREE.MeshPhysicalMaterial({
+      color: 0xffffff, transparent: true, opacity: 0.16, depthWrite: false,
+      roughness: 0.05, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.04, ior: 1.45,
+    })
+    const acrylic = new THREE.Mesh(acrGeo, acrMat)
+    acrylic.position.z = frontZ - 0.05 - c.baseZ // local to the cap; front sits just under the bezel face
+    acrylic.renderOrder = 5
+    bm[i].add(acrylic)
+    trash.push(acrGeo, acrMat)
+
+    // CRT scanlines + vignette on the screen face under the glass; the label (depth-test-free, drawn later) stays crisp over them.
+    const crt = new THREE.Mesh(crtGeo, crtMat)
+    crt.scale.set(innerW - 0.02, innerH - 0.02, 1)
+    crt.position.z = acrylic.position.z - 0.02
+    crt.renderOrder = 4
+    bm[i].add(crt)
+
+    // Bloom halo, wider than the window so the glow spills onto the frame and a touch of the body.
+    const haloMat = new THREE.MeshBasicMaterial({
+      map: haloTex, transparent: true, opacity: 0.36, depthWrite: false, depthTest: occlude,
+      blending: THREE.AdditiveBlending,
+    })
+    const halo = new THREE.Mesh(haloGeo, haloMat)
+    halo.scale.set(outerW + 0.22, outerH + 0.22, 1)
+    halo.position.z = acrylic.position.z - 0.03
+    halo.renderOrder = 3
+    bm[i].add(halo)
+    glow[i] = haloMat
+    trash.push(haloMat)
+
+    // The faint glass glint, on top of the scanlines.
+    const sheen = new THREE.Mesh(sheenGeo, sheenMat)
+    sheen.scale.set(innerW - 0.06, innerH - 0.06, 1)
+    sheen.position.z = acrylic.position.z - 0.01
+    sheen.renderOrder = 6
+    bm[i].add(sheen)
+  }
+
+  return { dispose: () => trash.forEach((t) => t.dispose()), glow }
+}
+
+// Back-of-device dress: parting seam, corner screws, speaker grille, vent, spec label, strap eyelet, all
+// low-relief so no cavity cut is needed. Parented to the back panel to track stretch/flip; canvas recolors per theme.
+const BD_FONT = '-apple-system,"Segoe UI",system-ui,sans-serif'
+
+export function createBackDetails(
+  device: THREE.Group,
+  backPanel: THREE.Mesh,
+  dims: { bodyW: number; bodyH: number; corner: number; seamZ: number; bodyCx: number },
+  mats: {
+    metal: THREE.MeshStandardMaterial
+    seam: THREE.MeshStandardMaterial
+    recess: THREE.MeshStandardMaterial
+    shell: THREE.MeshStandardMaterial
+  },
+  inkColor: string,
+) {
+  const { bodyW, bodyH, corner, seamZ, bodyCx } = dims
+  const trash: { dispose(): void }[] = []
+  const tmp = new THREE.Matrix4()
+
+  const WALL = (bodyW + 0.16) / 2 // the side wall sits ~here; features crown here to read without poking
+
+  /* side grip: ribbed patch on each back-shell wall, crown at the wall surface so it reads as grip
+     texture without passing the front silhouette. Lives on `device`, re-seated with the seam on grow. */
+  const gripGroup = new THREE.Group()
+  device.add(gripGroup)
+  const ribR = 0.03
+  const grooveGeo = new THREE.CapsuleGeometry(ribR, 1.6, 4, 12) // capsule axis is Y → a vertical rib
+  trash.push(grooveGeo)
+  const GRIP_X = WALL - ribR // crown flush with the wall
+  for (const side of [-1, 1])
+    for (const gz of [-0.82, -1.04, -1.26, -1.48, -1.7]) {
+      const rib = new THREE.Mesh(grooveGeo, mats.recess)
+      rib.position.set(side * GRIP_X, 0, gz)
+      gripGroup.add(rib)
+    }
+
+  /* parting seam: a recessed line on the body outline, crown at the side-wall surface, tucked under
+     the front silhouette. Lives on `device` (not the back panel), so it shows through the whole spin, not just when flipped. */
+  let seam: THREE.Mesh | null = null
+  const SEAM_R = 0.032
+  function buildSeamGeo(ext: number) {
+    const grow = (WALL - SEAM_R) * 2 - bodyW // outline so the tube crown lands on the wall
+    const outline = roundedRect(bodyW + grow, bodyH + ext + grow, corner + grow / 2).getPoints(48)
+    const pts = outline.map((p) => new THREE.Vector3(p.x, p.y, 0))
+    return new THREE.TubeGeometry(
+      new THREE.CatmullRomCurve3(pts, true, 'catmullrom', 0),
+      280,
+      SEAM_R,
+      8,
+      true,
+    )
+  }
+  function rebuildSeam(ext: number, cy: number) {
+    if (!seam) {
+      seam = new THREE.Mesh(buildSeamGeo(ext), mats.seam)
+      device.add(seam)
+    } else {
+      seam.geometry.dispose()
+      seam.geometry = buildSeamGeo(ext)
+    }
+    seam.position.set(bodyCx, cy, seamZ)
+    gripGroup.position.set(bodyCx, cy, 0) // grip patch rides the body center as it stretches
+  }
+
+  // Shared geometry for the four corner screws: a dark countersink cup, a gunmetal head, a cross slot.
+  const csGeo = new THREE.CircleGeometry(0.17, 24)
+  const headGeo = new THREE.CylinderGeometry(0.105, 0.125, 0.05, 22)
+  headGeo.rotateX(Math.PI / 2) // axis Y → faces ±z; the wider base ends up toward the viewer when flipped
+  const slotGeo = new THREE.BoxGeometry(0.16, 0.034, 0.02)
+  trash.push(csGeo, headGeo, slotGeo)
+  const screwGroups: THREE.Group[] = []
+  for (let i = 0; i < 4; i++) {
+    const g = new THREE.Group()
+    const cs = new THREE.Mesh(csGeo, mats.recess)
+    const head = new THREE.Mesh(headGeo, mats.metal)
+    head.position.z = -0.026
+    head.castShadow = true
+    const slot1 = new THREE.Mesh(slotGeo, mats.recess)
+    slot1.position.z = -0.05
+    const slot2 = new THREE.Mesh(slotGeo, mats.recess)
+    slot2.position.z = -0.05
+    slot2.rotation.z = Math.PI / 2
+    g.add(cs, head, slot1, slot2)
+    backPanel.add(g)
+    screwGroups.push(g)
+  }
+
+  /* speaker grille: a shell-tone boss standing proud of the back with real punched holes (chamfered so
+     rims catch light), over a dark backing. The depth is genuine, you look down each hole onto the cavity floor. */
+  const grilleGroup = new THREE.Group()
+  backPanel.add(grilleGroup)
+  const padW = 1.9
+  const padH = 0.92
+  // dark cavity floor the holes look down onto, just proud of the rear face
+  const backing = new THREE.Mesh(
+    new THREE.ShapeGeometry(roundedRect(padW - 0.06, padH - 0.06, 0.17), 24),
+    mats.recess,
+  )
+  backing.position.z = -0.01
+  grilleGroup.add(backing)
+  trash.push(backing.geometry)
+  // the drilled boss: a rounded plate with the hole grid cut clean through, trimmed to a rounded cluster
+  const boss = roundedRect(padW, padH, 0.2)
+  const cols = 9
+  const rows = 4
+  const dotPitch = 0.19
+  for (let r = 0; r < rows; r++)
+    for (let c = 0; c < cols; c++) {
+      const x = (c - (cols - 1) / 2) * dotPitch
+      const y = (r - (rows - 1) / 2) * dotPitch
+      if ((x / (padW / 2 - 0.18)) ** 2 + (y / (padH / 2 - 0.14)) ** 2 > 1) continue
+      boss.holes.push(circlePath(x, y, 0.046))
+    }
+  const bossGeo = frontZeroed(boss, 0.075, 0.009)
+  const bossMesh = new THREE.Mesh(bossGeo, mats.shell)
+  bossMesh.rotation.y = Math.PI // drilled face toward the viewer when the device is flipped
+  bossMesh.position.z = -0.072 // stands proud; the holes reveal the dark backing behind
+  bossMesh.castShadow = true
+  bossMesh.receiveShadow = true
+  grilleGroup.add(bossMesh)
+  trash.push(bossGeo)
+
+  /* vent: a short centered run of dark louver slots near the bottom edge. */
+  const ventGroup = new THREE.Group()
+  backPanel.add(ventGroup)
+  const ventGeo = new THREE.ShapeGeometry(roundedRect(0.045, 0.46, 0.022), 4)
+  trash.push(ventGeo)
+  const ventN = 7
+  const ventPitch = 0.13
+  const vents = new THREE.InstancedMesh(ventGeo, mats.recess, ventN)
+  for (let i = 0; i < ventN; i++) {
+    tmp.makeTranslation((i - (ventN - 1) / 2) * ventPitch, 0, -0.004)
+    vents.setMatrixAt(i, tmp)
+  }
+  vents.instanceMatrix.needsUpdate = true
+  ventGroup.add(vents)
+  trash.push(vents)
+
+  /* spec label: printed silkscreen block (model no, fine line, regulatory row), faced toward the rear so it reads when flipped, recolored to the theme's label ink. */
+  const labelGroup = new THREE.Group()
+  backPanel.add(labelGroup)
+  const lc = document.createElement('canvas')
+  lc.width = 512
+  lc.height = 256
+  const lg = lc.getContext('2d')!
+  function drawLabel(color: string) {
+    lg.clearRect(0, 0, 512, 256)
+    lg.fillStyle = color
+    lg.textAlign = 'center'
+    lg.font = `700 66px ${BD_FONT}`
+    lg.fillText('PIPS-01', 256, 76)
+    lg.globalAlpha = 0.72
+    lg.font = `500 30px ${BD_FONT}`
+    lg.fillText('DEEPBOOK PREDICT INSIDE', 256, 142)
+    lg.globalAlpha = 0.5
+    lg.font = `500 26px ${BD_FONT}`
+    lg.fillText('CE · FCC · RoHS', 256, 196)
+    lg.globalAlpha = 1
+  }
+  drawLabel(inkColor)
+  const ltex = new THREE.CanvasTexture(lc)
+  ltex.colorSpace = THREE.SRGBColorSpace
+  const lplaneGeo = new THREE.PlaneGeometry(1.6, 0.8)
+  const lmat = new THREE.MeshBasicMaterial({ map: ltex, transparent: true })
+  const lplane = new THREE.Mesh(lplaneGeo, lmat)
+  lplane.rotation.y = Math.PI // mirror so the print reads correctly once the panel is flipped to camera
+  labelGroup.add(lplane)
+  trash.push(ltex, lplaneGeo, lmat)
+
+  // Re-seats the corner/edge-anchored pieces against the current panel half-extents; decals float just proud of the rear face (faceZ - eps).
+  function place(halfW: number, halfH: number, faceZ: number) {
+    const inset = 0.5
+    const sx = halfW - inset
+    const sy = halfH - inset
+    const sc: [number, number][] = [
+      [-sx, sy],
+      [sx, sy],
+      [-sx, -sy],
+      [sx, -sy],
+    ]
+    screwGroups.forEach((g, i) => g.position.set(sc[i][0], sc[i][1], faceZ - 0.004))
+    grilleGroup.position.set(0, 2.55, faceZ - 0.003)
+    ventGroup.position.set(0, -(halfH - 1.2), faceZ - 0.004)
+    labelGroup.position.set(0, -2.75, faceZ - 0.012)
+  }
+
+  function recolorInk(color: string) {
+    drawLabel(color)
+    ltex.needsUpdate = true
+  }
+
+  function dispose() {
+    if (seam) seam.geometry.dispose()
+    trash.forEach((t) => t.dispose())
+  }
+
+  return { place, rebuildSeam, recolorInk, dispose }
+}
+
+// The guts: built once, parented to `device`, hidden until a transparent skin is on. Coordinates are
+// body-local at the device's NATURAL height, and the group stays pinned there (see setExt): the screen
+// L-cutout only ever grows UPWARD in Y (never X), so the bottom deck and side frames are always safe to fill without occluding the live HTML screen.
+export function createInternals(device: THREE.Group, accent: string, full: boolean) {
+  const group = new THREE.Group()
+  group.visible = false
+  device.add(group)
+  const trash: { dispose(): void }[] = []
+  // A tall frame stretches the case upward from a fixed bottom edge. Parts hanging off the top rim ride
+  // that stretch; the side frames grow into it. Everything else is deck-anchored and must not move.
+  const riders: THREE.Mesh[] = []
+  const stretchers: { m: THREE.Mesh; y: number; h: number }[] = []
+  const G = <T extends THREE.BufferGeometry>(g: T): T => (trash.push(g), g) // register + return a geometry
+  const M = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number) => {
+    const m = new THREE.Mesh(geo, mat)
+    m.position.set(x, y, z)
+    group.add(m)
+    return m
+  }
+  const ridesTop = (m: THREE.Mesh) => (m.userData.baseY = m.position.y, riders.push(m), m)
+  const growsUp = (m: THREE.Mesh, h: number) => (stretchers.push({ m, y: m.position.y, h }), m)
+
+  // z layers, front-to-back inside the case (more negative = deeper toward the back shell)
+  const PCB_Z = -0.62
+  const LOW = -0.5 // low SMD parts sit just proud of the board
+  const TALL = -0.34 // tall masses (battery, shield cans, caps) crown nearer the frosted front
+  const LED_Z = -0.52
+
+  // --- black solder-mask PCB texture: dark substrate, copper traces, gold pads, white silk, vias ---
+  const pc = document.createElement('canvas')
+  pc.width = pc.height = 1024
+  const g2 = pc.getContext('2d')!
+  g2.fillStyle = '#0a0c0e'
+  g2.fillRect(0, 0, 1024, 1024)
+  for (let i = 0; i < 1600; i++) {
+    const x = (i * 137.5) % 1024
+    const y = (i * 311.7) % 1024
+    g2.fillStyle = i % 2 ? 'rgba(120,150,140,0.045)' : 'rgba(0,0,0,0.16)'
+    g2.fillRect(x, y, 3, 3)
+  }
+  g2.strokeStyle = '#b3742f' // copper on black
+  g2.lineCap = 'round'
+  g2.lineJoin = 'round'
+  const trace = (pts: number[][], w: number) => {
+    g2.lineWidth = w
+    g2.beginPath()
+    g2.moveTo(pts[0][0], pts[0][1])
+    for (let i = 1; i < pts.length; i++) g2.lineTo(pts[i][0], pts[i][1])
+    g2.stroke()
+  }
+  // a dense routed fabric: horizontal buses with rounded jogs, vertical risers, a couple of diagonals
+  for (let r = 0; r < 12; r++) {
+    const y = 56 + r * 80
+    trace([[24, y], [300, y], [372, y + 56], [660, y + 56], [732, y], [1000, y]], 3.5)
+  }
+  for (let c = 0; c < 10; c++) {
+    const x = 70 + c * 100
+    trace([[x, 30], [x, 300], [x + 46, 360], [x + 46, 994]], 3)
+  }
+  trace([[40, 980], [980, 60]], 6)
+  trace([[40, 60], [980, 980]], 6)
+  // gold pads + dark vias on a grid
+  for (let r = 0; r < 12; r++)
+    for (let c = 0; c < 10; c++) {
+      const x = 70 + c * 100
+      const y = 56 + r * 80
+      g2.fillStyle = '#cBA24a'
+      g2.beginPath(); g2.arc(x, y, 5.5, 0, Math.PI * 2); g2.fill()
+      g2.fillStyle = '#05070a'
+      g2.beginPath(); g2.arc(x, y, 2.4, 0, Math.PI * 2); g2.fill()
+    }
+  // white-silk component footprints + a QFP pad ring
+  g2.strokeStyle = 'rgba(220,228,224,0.7)'
+  g2.lineWidth = 2.5
+  g2.strokeRect(340, 320, 300, 300)
+  g2.strokeRect(120, 700, 200, 150)
+  g2.strokeRect(720, 700, 160, 200)
+  for (let i = 0; i < 14; i++) { // QFP pads down two sides of the big footprint
+    g2.fillStyle = '#cBA24a'
+    g2.fillRect(330, 340 + i * 20, 18, 9)
+    g2.fillRect(632, 340 + i * 20, 18, 9)
+  }
+  g2.fillStyle = 'rgba(224,230,226,0.82)'
+  g2.font = '700 44px -apple-system,"Segoe UI",system-ui,sans-serif'
+  g2.fillText('PIPS-01', 360, 375)
+  g2.font = '500 24px -apple-system,"Segoe UI",system-ui,sans-serif'
+  g2.fillText('DEEPBOOK · DBX', 352, 600)
+  g2.fillText('REV C', 132, 738)
+  g2.fillText('SUI', 760, 690)
+  const pcbTex = new THREE.CanvasTexture(pc)
+  pcbTex.colorSpace = THREE.SRGBColorSpace
+  pcbTex.anisotropy = 8
+  trash.push(pcbTex)
+
+  const matPcb = new THREE.MeshStandardMaterial({ map: pcbTex, roughness: 0.66, metalness: 0.2 })
+  const matCopper = new THREE.MeshStandardMaterial({ color: 0xc8803a, metalness: 0.85, roughness: 0.32 })
+  const matGold = new THREE.MeshStandardMaterial({ color: 0xd9b24a, metalness: 0.9, roughness: 0.28 })
+  const matIc = new THREE.MeshStandardMaterial({ color: 0x0a0a0d, metalness: 0.25, roughness: 0.48 })
+  const matCell = new THREE.MeshStandardMaterial({ color: 0x121317, metalness: 0.55, roughness: 0.38 })
+  const matShield = new THREE.MeshStandardMaterial({ color: 0x9aa0a8, metalness: 0.82, roughness: 0.42 }) // brushed RF can
+  const matRibbon = new THREE.MeshStandardMaterial({ color: 0xd9892b, metalness: 0.2, roughness: 0.55 })
+  const matMetal = new THREE.MeshStandardMaterial({ color: 0x8b9099, metalness: 0.9, roughness: 0.3 })
+  const matCap = new THREE.MeshStandardMaterial({ color: 0x1a2233, metalness: 0.45, roughness: 0.44 }) // electrolytic can
+  const matAccent = new THREE.MeshStandardMaterial({ color: new THREE.Color(accent), metalness: 0.1, roughness: 0.5 })
+  const matLed = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 1.35, roughness: 0.4 }) // glyph glow
+  trash.push(matPcb, matCopper, matGold, matIc, matCell, matShield, matRibbon, matMetal, matCap, matAccent, matLed)
+
+  // HARD screen clearance: the L-cutout in body-local runs wx(SCREEN_L)..wx(SCREEN_R) (about ±2.95 today,
+  // widen those in ConsoleCanvas and this gets tighter), y down to -2.75 (left column) or -0.975 (right).
+  // Deck parts stay TOP <= -3.05, notch parts TOP <= -1.2, side parts at |x|=FRAME_X width <= 0.18.
+  const FRAME_X = 3.0
+
+  // --- the boards: bottom deck + notch (behind the play button) + two side strips framing the screen ---
+  const boardPlane = (w: number, h: number, r: number, x: number, y: number) => {
+    const g = G(new THREE.ShapeGeometry(roundedRect(w, h, r), 16))
+    setBoxUVs(g)
+    return M(g, matPcb, x, y, PCB_Z)
+  }
+  boardPlane(6.0, 2.9, 0.12, 0, -4.5) // bottom deck (top -3.05)
+  boardPlane(1.66, 1.42, 0.1, 1.82, -1.97) // notch (top -1.26)
+  growsUp(boardPlane(0.2, 8.0, 0.06, -FRAME_X, 1.1), 8.0) // left frame strip
+  growsUp(boardPlane(0.2, 6.0, 0.06, FRAME_X, 2.1), 6.0) // right frame strip
+
+  // --- battery cell: the dominant mass, lower-left of the deck, with a printed band + gold terminals ---
+  M(G(frontZeroed(roundedRect(2.25, 2.3, 0.1), 0.24, 0.02)), matCell, -1.5, -4.55, TALL) // top -3.4
+  M(G(new THREE.PlaneGeometry(2.0, 0.18)), matAccent, -1.5, -3.95, TALL + 0.13)
+  const termGeo = G(new THREE.BoxGeometry(0.22, 0.16, 0.06))
+  M(termGeo, matGold, -2.35, -3.55, TALL + 0.1)
+  M(termGeo, matGold, -0.65, -3.55, TALL + 0.1)
+
+  // --- copper wireless-charging coil: concentric flat rings (the signature Nothing detail) ---
+  const coil = new THREE.Group()
+  coil.position.set(1.55, -4.5, LOW)
+  group.add(coil)
+  for (let i = 0; i < 10; i++)
+    coil.add(new THREE.Mesh(G(new THREE.TorusGeometry(0.32 + i * 0.07, 0.024, 8, 56)), matCopper))
+
+  // --- RF shield cans: brushed-metal lids, the most mechanical detail, low on the deck (clear of screen) ---
+  M(G(frontZeroed(roundedRect(1.1, 0.62, 0.06), 0.16, 0.02)), matShield, -0.05, -3.74, TALL + 0.02) // top -3.43
+  M(G(new THREE.PlaneGeometry(0.86, 0.34)), matIc, -0.05, -3.74, TALL + 0.19) // etched lid recess
+
+  // --- ICs (notch + side strips), gold pin strips on the bigger ones ---
+  const chipBig = G(frontZeroed(roundedRect(0.58, 0.42, 0.04), 0.07, 0.012))
+  const pinGeo = G(new THREE.BoxGeometry(0.58, 0.05, 0.03))
+
+  // Densely dress each side frame strip: small ICs + chip passives + connectors, width-capped and pinned to the frame edge so nothing creeps onto the screen.
+  const smdIc = G(frontZeroed(roundedRect(0.16, 0.13, 0.025), 0.045, 0.008))
+  const r04 = G(new THREE.BoxGeometry(0.1, 0.06, 0.04)) // 0402-style chip resistor/cap
+  const sideConn = G(frontZeroed(roundedRect(0.16, 0.13, 0.03), 0.06, 0.008))
+  const dressStrip = (x: number, yBot: number, yTop: number) => {
+    let i = 0
+    for (let y = yBot; y < yTop; y += 0.28, i++) {
+      const ox = ((i % 3) - 1) * 0.02 // tiny jitter, stays inside the strip
+      if (i % 4 === 0) M(smdIc, matIc, x + ox, y, LOW + 0.03)
+      else M(r04, i % 2 ? matCap : matMetal, x + ox, y, LOW + 0.02)
+    }
+    M(sideConn, matAccent, x, yBot + 0.5, LOW + 0.05)
+    ridesTop(M(sideConn, matGold, x, yTop - 0.7, LOW + 0.05)) // the strip's top connector, stays at its head
+  }
+  dressStrip(-FRAME_X, -2.6, 5.2) // left frame
+  dressStrip(FRAME_X, -0.5, 5.1) // right frame
+
+  // --- electrolytic capacitors: standing cans along the bottom edge (axis toward the viewer) ---
+  const capBody = G(new THREE.CylinderGeometry(0.1, 0.1, 0.26, 18))
+  capBody.rotateX(Math.PI / 2) // stand it up toward +z
+  const capTop = G(new THREE.CircleGeometry(0.1, 18))
+  const cap = (cx: number, cy: number) => {
+    M(capBody, matCap, cx, cy, TALL + 0.05)
+    M(capTop, matMetal, cx, cy, TALL + 0.18) // metal vent top
+  }
+  for (const [cx, cy] of [[-2.55, -5.55], [0.05, -5.6], [0.95, -5.55]] as [number, number][]) cap(cx, cy)
+
+  // --- vibration coin motor: a flat metal puck with a hub ---
+  M(G(new THREE.CylinderGeometry(0.22, 0.22, 0.1, 28).rotateX(Math.PI / 2)), matMetal, 2.45, -5.45, TALL + 0.02)
+  M(G(new THREE.CircleGeometry(0.07, 16)), matIc, 2.45, -5.45, TALL + 0.08)
+
+  // --- FPC ribbons + their red connectors, both pinned to the frame edge (clear of the screen) ---
+  growsUp(M(G(new THREE.BoxGeometry(0.12, 4.4, 0.035)), matRibbon, FRAME_X, 1.7, LOW + 0.04), 4.4)
+  M(G(new THREE.BoxGeometry(0.12, 2.0, 0.035)), matRibbon, -FRAME_X, -0.4, LOW + 0.04)
+
+  // --- the notch (behind the play button): mezzanine fingers + a shield + an IC and caps, packed ---
+  const fingerGeo = G(new THREE.BoxGeometry(0.07, 0.32, 0.03))
+  for (let i = 0; i < 8; i++) {
+    M(fingerGeo, matGold, 1.3 + i * 0.1, -2.35, LOW + 0.02) // top -2.19
+    M(fingerGeo, matGold, 1.3 + i * 0.1, -1.7, LOW + 0.02) // top -1.54
+  }
+  M(G(frontZeroed(roundedRect(0.58, 0.44, 0.05), 0.12, 0.02)), matShield, 1.5, -2.55, TALL) // top -2.33
+  M(chipBig, matIc, 2.32, -1.95, LOW + 0.04) // top -1.74
+  M(pinGeo, matGold, 2.32, -1.74, LOW + 0.02)
+  M(pinGeo, matGold, 2.32, -2.16, LOW + 0.02)
+  cap(2.5, -1.5) // top -1.4
+  cap(1.15, -1.55) // top -1.45
+
+  // --- top frame: selfie-camera module, sensor, earpiece bar, SMD row, glyph. Gated to showcase; a played skin's screen can grow into this band. ---
+  if (full) {
+    const topBoard = G(new THREE.ShapeGeometry(roundedRect(5.4, 0.28, 0.07), 12))
+    setBoxUVs(topBoard)
+    ridesTop(M(topBoard, matPcb, 0, 5.82, PCB_Z)) // bottom 5.68 (screen top ~5.63)
+    // camera module: black housing + glassy lens + a metal trim ring
+    ridesTop(M(G(frontZeroed(roundedRect(0.36, 0.22, 0.04), 0.1, 0.01)), matIc, -0.25, 5.82, TALL))
+    ridesTop(M(G(new THREE.CylinderGeometry(0.075, 0.075, 0.07, 24).rotateX(Math.PI / 2)), matCap, -0.25, 5.82, TALL + 0.1))
+    ridesTop(M(G(new THREE.TorusGeometry(0.075, 0.015, 8, 24)), matMetal, -0.25, 5.82, TALL + 0.12))
+    // proximity sensor, a brushed earpiece bar, an SMD row and a side connector
+    ridesTop(M(G(new THREE.CylinderGeometry(0.04, 0.04, 0.05, 16).rotateX(Math.PI / 2)), matCap, 0.0, 5.82, TALL + 0.05))
+    ridesTop(M(G(new THREE.BoxGeometry(0.9, 0.045, 0.03)), matMetal, 0.85, 5.85, LOW + 0.04))
+    for (let i = 0; i < 6; i++) ridesTop(M(r04, i % 2 ? matCap : matMetal, -2.1 + i * 0.24, 5.79, LOW + 0.02))
+    ridesTop(M(G(frontZeroed(roundedRect(0.28, 0.14, 0.03), 0.06, 0.008)), matAccent, 2.3, 5.82, LOW + 0.05))
+  }
+
+  // --- glyph lighting: brighter emissive runs down both frames, a ring around the coil, a bar along the bottom edge, all clear of the screen. ---
+  const led = (w: number, h: number, x: number, y: number) =>
+    M(G(frontZeroed(roundedRect(w, h, Math.min(w, h) / 2), 0.04, 0.01)), matLed, x, y, LED_Z)
+  growsUp(led(0.1, 7.4, -FRAME_X, 1.1), 7.4) // left frame glyph
+  growsUp(led(0.1, 5.4, FRAME_X, 2.1), 5.4) // right frame glyph
+  led(2.4, 0.1, -0.2, -5.99) // bottom-edge glyph bar, tucked under the MENU / HOME captions so it never backlights them
+  M(G(new THREE.TorusGeometry(1.07, 0.035, 10, 80)), matLed, 1.55, -4.5, LED_Z) // glyph ring around the coil
+  if (full) ridesTop(led(2.8, 0.09, 0, 5.7)) // a glyph run along the top, in showcase
+
+  // --- hardware screws dotted around every board (all clear of the screen) ---
+  const screwGeo = G(new THREE.CylinderGeometry(0.07, 0.085, 0.05, 16).rotateX(Math.PI / 2))
+  for (const [sx, sy] of [
+    [-2.95, -3.2], [2.95, -5.75], [-2.95, -5.75], [2.6, -1.35], [1.2, -2.5],
+    [-FRAME_X, -2.9], [FRAME_X, -0.8],
+  ] as [number, number][])
+    M(screwGeo, matMetal, sx, sy, LOW + 0.04)
+  for (const [sx, sy] of [[-FRAME_X, 5.0], [FRAME_X, 4.9]] as [number, number][])
+    ridesTop(M(screwGeo, matMetal, sx, sy, LOW + 0.04)) // top frame screws follow the stretched head
+
+  // Stretch to the case's current height. The guts are authored against the natural body, so without
+  // this they'd ride the body centre up and creep over the bottom of the screen on tall frames.
+  function setExt(ext: number) {
+    for (const m of riders) m.position.y = (m.userData.baseY as number) + ext
+    for (const s of stretchers) {
+      s.m.scale.y = (s.h + ext) / s.h
+      s.m.position.y = s.y + ext / 2
+    }
+  }
+
+  function dispose() {
+    trash.forEach((t) => t.dispose())
+    device.remove(group)
+  }
+
+  return { group, setExt, dispose }
+}
+
+// Shading helper for skin-derived parts. Works in sRGB lightness, not the linear working space:
+// a linear lerp lifts a near-black shell straight to mid grey while barely touching a cream one.
+const _hsl = { h: 0, s: 0, l: 0 }
+function shade(base: THREE.Color, dl: number, out: THREE.Color): THREE.Color {
+  base.getHSL(_hsl, THREE.SRGBColorSpace)
+  return out.setHSL(_hsl.h, _hsl.s, Math.min(0.97, Math.max(0.03, _hsl.l + dl)), THREE.SRGBColorSpace)
+}
+// Relative luminance. THREE keeps colors in the linear working space, which is exactly what the
+// WCAG coefficients expect, so no de-gamma pass here.
+function luminance(c: THREE.Color): number {
+  return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b
+}
+
+// The scene runs hot on purpose (hemi 1.73 + ambient 0.5 + key 2.98, no tone mapping), so anything
+// light renders brighter than its own value and two light colours clip to the same white. Judging
+// contrast on the raw hex therefore passed pairs that are flat on screen, which is how a white note
+// on the Sui cap, or grey/purple/orange picks on a pale body, still came out invisible. This is the
+// lit value the eye actually gets.
+const LIGHT_GAIN = 2.2
+function litLuminance(c: THREE.Color): number {
+  return Math.min(1, luminance(c) * LIGHT_GAIN)
+}
+
+// A bold glyph on a solid cap, not body text. Set at the level that rescues the collisions (a black
+// PLAY on a dark skin sits at ~1.2) without repainting the presets that were already tuned by hand.
+const MIN_INK_RATIO = 2.0
+function contrast(a: number, b: number): number {
+  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)
+}
+
+// Mix toward white or black in gamma space, the way you'd tint paint. Deliberately not shade()'s HSL
+// walk: a near-white accent carries a huge nominal saturation, so darkening its lightness swings it
+// to a vivid hue instead of grey.
+function mixInk(c: THREE.Color, toWhite: boolean, t: number): void {
+  const hex = c.getHex(THREE.SRGBColorSpace)
+  const mix = (ch: number) => Math.round(ch + ((toWhite ? 255 : 0) - ch) * t)
+  c.setHex((mix((hex >> 16) & 255) << 16) | (mix((hex >> 8) & 255) << 8) | mix(hex & 255), THREE.SRGBColorSpace)
+}
+
+// Keep an accent readable on whatever part it is printed on, so a black PLAY pick still reads
+// black-ish, just visible. The old hue-distance guard missed the achromatic picks (black on a
+// charcoal cap has no hue to be far in), which is how the note glyph vanished on a dark skin.
+function legibleInk(ink: THREE.Color, backdrop: THREE.Color): void {
+  const back = litLuminance(backdrop)
+  if (contrast(litLuminance(ink), back) >= MIN_INK_RATIO) return
+  // Move away from the backdrop on the side the accent already leans to, so a bright skin colour
+  // stays bright; take the other side only when that one runs out of headroom.
+  const walk = (toWhite: boolean) => {
+    const c = ink.clone()
+    for (let i = 0; i < 20 && contrast(litLuminance(c), back) < MIN_INK_RATIO; i++) mixInk(c, toWhite, 0.1)
+    return c
+  }
+  const up = litLuminance(ink) >= back
+  const lead = walk(up)
+  ink.copy(contrast(litLuminance(lead), back) >= MIN_INK_RATIO ? lead : walk(!up))
+}
+
+// The raised P on the PLAY cap, exported because ConsoleCanvas owns that mesh. It reads purely as a
+// tone step off the button, and the old flat multiply died at both ends of the range: a near-black
+// button had nothing left to darken, and a white one clipped to the same white as the cap under the
+// key light. Stepping a fraction in gamma space scales the step with the cap's brightness, which is
+// what beats the clipping. Measured on-device across every skin and palette pick.
+const EMBOSS_STEP = 0.25
+// A near-black cap has no room to darken, so the P lifts instead. Smaller, because a lift off a dark
+// surface reads far louder than the same step down off a bright one.
+const EMBOSS_LIFT = 0.13
+const MIN_EMBOSS_RATIO = 1.35 // below this the darkened P is mud on mud, take the lift instead
+const _capTone = new THREE.Color()
+const _down = new THREE.Color()
+export function embossTone(cap: string, out: THREE.Color): void {
+  _capTone.set(cap)
+  mixInk(_down.copy(_capTone), false, EMBOSS_STEP)
+  if (contrast(luminance(_down), luminance(_capTone)) >= MIN_EMBOSS_RATIO) {
+    out.copy(_down)
+    return
+  }
+  mixInk(out.copy(_capTone), true, EMBOSS_LIFT)
+}
+
+// A beamed eighth-note glyph on a transparent canvas, for the audio button cap face. Drawn white so
+// the material tint is the only ink: the skin's accent recolors it (see createBezelAudio's recolor).
+function noteTexture(): THREE.CanvasTexture {
+  const c = document.createElement('canvas')
+  c.width = c.height = 128
+  const x = c.getContext('2d')!
+  x.fillStyle = '#ffffff'
+  const head = (cx: number, cy: number) => {
+    x.save()
+    x.translate(cx, cy)
+    x.rotate(-0.35)
+    x.beginPath()
+    x.ellipse(0, 0, 16, 12, 0, 0, Math.PI * 2)
+    x.fill()
+    x.restore()
+  }
+  head(40, 96)
+  head(94, 86)
+  x.fillRect(53, 38, 7, 58) // left stem
+  x.fillRect(107, 28, 7, 58) // right stem
+  x.beginPath() // slanted beam joining the stems
+  x.moveTo(53, 38)
+  x.lineTo(114, 28)
+  x.lineTo(114, 45)
+  x.lineTo(53, 55)
+  x.closePath()
+  x.fill()
+  const t = new THREE.CanvasTexture(c)
+  t.anisotropy = 4
+  return t
+}
+
+// Play / pause glyphs for the transport cap, same white-on-transparent trick as noteTexture.
+function transportTexture(kind: 'play' | 'pause'): THREE.CanvasTexture {
+  const c = document.createElement('canvas')
+  c.width = c.height = 128
+  const x = c.getContext('2d')!
+  x.fillStyle = '#ffffff'
+  if (kind === 'play') {
+    x.beginPath()
+    x.moveTo(42, 24)
+    x.lineTo(106, 64)
+    x.lineTo(42, 104)
+    x.closePath()
+    x.fill()
+  } else {
+    x.fillRect(36, 26, 21, 76)
+    x.fillRect(71, 26, 21, 76)
+  }
+  const t = new THREE.CanvasTexture(c)
+  t.anisotropy = 4
+  return t
+}
+
+// Bezel audio cluster, modelled into the shell (not a DOM overlay): a press button with a note glyph
+// (the sounds drawer), a play/pause cap next to it, and a Game Boy style volume slider (a recessed slot in a plate, with a proud ridged cap that slides). The
+// whole thing is tone-on-tone with the cream body so it never distracts, depth reads from shadow not colour.
+// Sits tight in the top-left bezel, sized to stay within the bezel strip. The button presses through the
+// shared interactive loop; the cap drags via `setVolume`. Design px centres, world-unit sizes.
+export function createBezelAudio(
+  device: THREE.Group, interactive: THREE.Mesh[], wx: Px, wy: Px,
+) {
+  const AMBER = 0xf5a623
+  // One knob for the whole cluster's size; every dimension below is a base size times S. The top bezel
+  // has to be deep enough to hold it, so raise TOP_BEZEL in ConsoleCanvas alongside this.
+  const S = 1.35
+  // Cluster position in design px. y is measured DOWN the layout (wy flips it), so a smaller/more
+  // negative y sits HIGHER on the bezel. 200 px = 1 world unit; the bezel band runs about -97..4.
+  const BTN = { x: 84, y: -34 } // top-left bezel, the sounds-drawer button's centre
+  const PLAY = { x: 216, y: -34 } // music play/pause, tight to the note button so the two read as a pair
+  const TRK = { x: 474, y: -34 } // slider picks up after the pair, all three hugging the left
+  const HOUSE_W = 1.28 * S // slider plate width (world units)
+  const trackY = wy(TRK.y) // slider vertical
+  const btnY = wy(BTN.y) // button vertical (independent of the slider so each can be nudged on its own)
+  const cx = wx(TRK.x)
+  const CAP_W = 0.24 * S
+  const travel = HOUSE_W - CAP_W - 0.12 * S // cap centre range, inset from the slot rims
+  const leftX = cx - travel / 2
+
+  // Tone-on-tone with the body: the cluster is molded out of the same shell, so it never distracts.
+  // Depth reads from geometry + shadow, not colour, so recesses are a shadowed body tint, never black.
+  // These are the Classic defaults; `recolor` repaints the whole cluster to the live skin.
+  const CREAM = 0xe9dbbf
+  const matShell = new THREE.MeshStandardMaterial({ color: CREAM, roughness: 0.78, metalness: 0 })
+  const matRecess = new THREE.MeshStandardMaterial({ color: 0xac9e78, roughness: 0.95, metalness: 0 }) // socket, in shadow
+  const matSlot = new THREE.MeshStandardMaterial({ color: 0x877750, roughness: 0.96, metalness: 0 }) // deep channel: a warm shadow, not black
+  const matCap = new THREE.MeshStandardMaterial({ color: 0xf3ead4, roughness: 0.42, metalness: 0.06 }) // glossy molded-plastic nub, catches a highlight
+  const matGroove = new THREE.MeshStandardMaterial({ color: 0x8a7c54, roughness: 0.85, metalness: 0 }) // cut grip lines, in shadow
+  const matBtn = new THREE.MeshStandardMaterial({
+    color: 0xe4d8bd, roughness: 0.55, metalness: 0.04,
+    emissive: new THREE.Color(AMBER), emissiveIntensity: 0, // warms only on press, cream at rest
+  })
+  const matPlayBtn = matBtn.clone() // own material so the two caps glow independently on press
+  // The one place the skin's accent shows: the printed level bar in the slot and the note glyph.
+  const matFill = new THREE.MeshBasicMaterial({ color: AMBER })
+  const matNote = new THREE.MeshBasicMaterial({ map: noteTexture(), color: AMBER, transparent: true, depthWrite: false })
+  const playTex = transportTexture('play')
+  const pauseTex = transportTexture('pause')
+  const matTransport = new THREE.MeshBasicMaterial({ map: playTex, color: AMBER, transparent: true, depthWrite: false })
+
+  // Everything hangs off one group so the caller can ride it up with the screen stretch (screenExt): the
+  // top bezel rises when the screen fills a tall frame, and the cluster must rise with it, not stay pinned.
+  const group = new THREE.Group()
+
+  /* ── audio button ── cream cap in a tight recessed socket. Kept short (the bezel strip is thin) but wide. ── */
+  const bx = wx(BTN.x)
+  const socket = new THREE.Mesh(new THREE.ShapeGeometry(roundedRect(0.46 * S, 0.27 * S, 0.1 * S), 32), matRecess)
+  socket.position.set(bx, btnY, 0.015)
+  socket.receiveShadow = true
+  group.add(socket)
+
+  const audioBtn = new THREE.Mesh(frontZeroed(roundedRect(0.4 * S, 0.23 * S, 0.08 * S), 0.07, 0.02), matBtn)
+  audioBtn.position.set(bx, btnY, 0.1)
+  audioBtn.castShadow = true
+  audioBtn.userData = { kind: 'audioBtn', pressed: false, baseZ: 0.1, pressedZ: 0.035, glow: 0, baseEmissive: 0 }
+  group.add(audioBtn)
+  interactive.push(audioBtn)
+
+  const note = new THREE.Mesh(new THREE.PlaneGeometry(0.16 * S, 0.16 * S), matNote)
+  note.position.set(0, 0.01 * S, 0.05) // on the cap face, rides the press
+  audioBtn.add(note)
+
+  /* ── play/pause ── the same cap next door, so starting the music never costs a trip to the drawer ── */
+  const px = wx(PLAY.x)
+  const playSocket = new THREE.Mesh(new THREE.ShapeGeometry(roundedRect(0.46 * S, 0.27 * S, 0.1 * S), 32), matRecess)
+  playSocket.position.set(px, btnY, 0.015)
+  playSocket.receiveShadow = true
+  group.add(playSocket)
+
+  const playBtn = new THREE.Mesh(frontZeroed(roundedRect(0.4 * S, 0.23 * S, 0.08 * S), 0.07, 0.02), matPlayBtn)
+  playBtn.position.set(px, btnY, 0.1)
+  playBtn.castShadow = true
+  playBtn.userData = { kind: 'playBtn', pressed: false, baseZ: 0.1, pressedZ: 0.035, glow: 0, baseEmissive: 0 }
+  group.add(playBtn)
+  interactive.push(playBtn)
+
+  const transport = new THREE.Mesh(new THREE.PlaneGeometry(0.15 * S, 0.15 * S), matTransport)
+  transport.position.set(0.005 * S, 0, 0.05) // triangle's mass sits left of centre, nudge it back
+  playBtn.add(transport)
+
+  /* ── volume slider ── cream plate with a warm slot recessed through it, a proud ridged cap that slides ── */
+  const plateShape = roundedRect(HOUSE_W, 0.21 * S, 0.085 * S)
+  plateShape.holes.push(roundedRectPath(0, 0, HOUSE_W - 0.16 * S, 0.14 * S, 0.06 * S)) // the slot cutout
+  const plate = new THREE.Mesh(frontZeroed(plateShape, 0.04, 0.012), matShell)
+  plate.position.set(cx, trackY, 0.06)
+  plate.castShadow = true
+  plate.receiveShadow = true
+  group.add(plate)
+
+  // slot floor, set below the plate front so the channel reads recessed
+  const SLOT_W = HOUSE_W - 0.16 * S
+  const slot = new THREE.Mesh(new THREE.ShapeGeometry(roundedRect(SLOT_W, 0.14 * S, 0.06 * S), 24), matSlot)
+  slot.position.set(cx, trackY, 0.025)
+  slot.receiveShadow = true
+  group.add(slot)
+
+  // Level bar printed on the slot floor, left rim up to the cap. Unlit on purpose so the accent reads
+  // the same on a black shell as a cream one; the cap sits proud of it and hides the low end.
+  const fillLeft = cx - SLOT_W / 2 + 0.03 * S
+  const fill = new THREE.Mesh(new THREE.PlaneGeometry(1, 0.085 * S), matFill)
+  fill.position.set(fillLeft, trackY, 0.033)
+  group.add(fill)
+
+  /* cap, overhangs the slot top and bottom like the Game Boy fader */
+  const faderCap = new THREE.Mesh(frontZeroed(roundedRect(CAP_W, 0.25 * S, 0.035 * S), 0.06, 0.015), matCap)
+  faderCap.position.set(cx, trackY, 0.14)
+  faderCap.castShadow = true
+  group.add(faderCap)
+  // three vertical grip grooves cut into the cap face
+  for (let i = -1; i <= 1; i++) {
+    const groove = new THREE.Mesh(new THREE.BoxGeometry(0.02 * S, 0.15 * S, 0.02), matGroove)
+    groove.position.set(i * 0.062 * S, 0, 0.02)
+    faderCap.add(groove)
+  }
+
+  // wide invisible hit target over the whole slot, so a click or drag anywhere positions the cap
+  const hit = new THREE.Mesh(
+    new THREE.BoxGeometry(HOUSE_W + 0.12 * S, 0.34 * S, 0.04),
+    new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }),
+  )
+  hit.position.set(cx, trackY, 0.16)
+  hit.userData = { kind: 'volumeFader' }
+  group.add(hit)
+  interactive.push(hit)
+
+  device.add(group)
+
+  let volume = 0.72
+  function setVolume(v: number) {
+    volume = Math.max(0, Math.min(1, v))
+    const capX = leftX + volume * travel
+    faderCap.position.x = capX
+    const w = Math.max(0.001, capX - fillLeft)
+    fill.scale.x = w
+    fill.position.x = fillLeft + w / 2
+  }
+  const pickVolume = (localX: number) => Math.max(0, Math.min(1, (localX - leftX) / travel))
+  setVolume(volume)
+
+  // Glyph follows the transport: pause bars while the track runs, a triangle when it's stopped. Both
+  // maps are non-null so swapping one in needs no shader rebuild.
+  function setPlaying(on: boolean) {
+    matTransport.map = on ? pauseTex : playTex
+    transport.position.x = on ? 0 : 0.005 * S // bars are symmetric, the triangle is not
+  }
+
+  // Repaint to a skin: plate + caps take the body tone (still molded out of the shell), recesses are
+  // shaded from it, and the accent lands on the note glyph, the level bar, and the press glow.
+  function recolor(body: string, accent: string, metal: boolean, env: THREE.Texture | null) {
+    const base = new THREE.Color(body)
+    matShell.color.copy(base)
+    shade(base, 0.06, matCap.color) // proud parts catch the light
+    matBtn.color.copy(matCap.color)
+    matPlayBtn.color.copy(matCap.color)
+    shade(base, -0.13, matRecess.color)
+    shade(base, -0.2, matSlot.color)
+    shade(base, -0.17, matGroove.color)
+    const dress = (m: THREE.MeshStandardMaterial, rough: number) => {
+      m.metalness = metal ? 0.85 : 0
+      m.roughness = metal ? 0.3 : rough
+      m.envMap = env
+      m.needsUpdate = true
+    }
+    dress(matShell, 0.78)
+    dress(matCap, 0.42)
+    dress(matBtn, 0.55)
+    dress(matPlayBtn, 0.55)
+    // The accent lands on two different surfaces, so each gets its own contrast pass: the note sits on
+    // the proud cap, the level bar on the recessed slot floor a couple of stops darker.
+    const noteInk = new THREE.Color(accent)
+    legibleInk(noteInk, matCap.color)
+    const fillInk = new THREE.Color(accent)
+    legibleInk(fillInk, matSlot.color)
+    matNote.color.copy(noteInk)
+    matTransport.color.copy(noteInk)
+    matFill.color.copy(fillInk)
+    matBtn.emissive.copy(noteInk)
+    matPlayBtn.emissive.copy(noteInk)
+  }
+
+  // The share-card shot mounts and tears down a whole scene per render, so the cluster owns its trash
+  // like every other element factory here.
+  function dispose() {
+    for (const m of [matShell, matRecess, matSlot, matCap, matGroove, matBtn, matPlayBtn, matFill, matNote, matTransport]) m.dispose()
+    matNote.map?.dispose()
+    playTex.dispose()
+    pauseTex.dispose()
+    group.traverse((o) => {
+      if (o instanceof THREE.Mesh) o.geometry.dispose()
+    })
+  }
+
+  return { group, audioBtn, playBtn, faderCap, faderHit: hit, setVolume, setPlaying, pickVolume, getVolume: () => volume, recolor, dispose }
+}

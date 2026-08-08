@@ -1,0 +1,39 @@
+---
+title: Identity
+description: Seedless onboarding and gasless sessions via zkLogin / Enoki.
+icon: KeyRound
+---
+
+# Identity privacy
+
+A payment system that demands a seed phrase before the first dollar has already lost. StreamLine onboards with **zkLogin**: sign in with Google (or supported social providers), receive a real Sui address, and never handle a recovery phrase unless you want to.
+
+## What that buys you
+
+- **No seed theater** — The address is derived from an OAuth identity + zkLogin proof, not a 12-word sticky note.
+- **Weaker linkability to “crypto personas”** — Fresh sessions don’t require importing a hot wallet that already doxed itself on NFT mints.
+- **Gasless by default** — Enoki sponsorship means users don’t hold SUI just to approve a milestone. Privacy that costs gas tax is privacy nobody uses.
+
+## Handles without the hex dump
+
+`alice@streamline` sits on top of the address. Humans and agents share a memorable name; explorers still see an address when they need to. The point isn’t absolute anonymity — it’s **not forcing everyone to live as `0x7a3f…`**.
+
+## Session model
+
+```
+Google OAuth  →  zkLogin JWT  →  Enoki / ephemeral key
+                                      │
+                         sponsored PTBs (create, approve, raise…)
+```
+
+Servers hold sponsorship keys; browsers never see them. Agents that need automation use keypairs or the [sponsor HTTP adapter](/docs/sdk/sponsorship) — same allowlisted Move targets, no embedded secrets in `@streamline/sdk`.
+
+## Boundaries
+
+zkLogin reduces **wallet friction** and casual linkability. It does not erase:
+
+- OAuth provider policies and account recovery
+- On-chain address reuse if you keep paying from the same session forever
+- Counterparty knowledge (the other party always knows who they contracted with)
+
+For high-assurance anonymity sets, treat zkLogin as the onboarding layer and rotate operational addresses deliberately.

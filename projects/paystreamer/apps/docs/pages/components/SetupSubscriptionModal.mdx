@@ -1,0 +1,94 @@
+import { useState } from 'react';
+import { SetupSubscriptionModal } from '@paystreamer/sdk/ui';
+import { DocsDemoWrapper } from '../../components/DocsDemoWrapper';
+
+import { DEMO_PLATFORM_ID } from '@paystreamer/sdk';
+
+export const LiveModal = () => {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <DocsDemoWrapper>
+      <div className="flex flex-col items-center gap-4">
+        <button 
+          onClick={() => setIsOpen(true)}
+          className="px-4 py-2 bg-blue-600 text-white font-medium rounded-md hover:bg-blue-700 transition"
+        >
+          Open Setup Modal
+        </button>
+        <SetupSubscriptionModal
+          isOpen={isOpen}
+          onClose={() => setIsOpen(false)}
+          platformId={DEMO_PLATFORM_ID}
+          tierIndex={0}
+          maxAttempts={3}
+        />
+      </div>
+    </DocsDemoWrapper>
+  );
+};
+
+# SetupSubscriptionModal
+
+<LiveModal />
+
+
+The `SetupSubscriptionModal` is a fully-featured UI component that guides a user through:
+1. Creating a PayStreamer account (if they don't have one).
+2. Depositing an initial PUSD buffer to cover future billing cycles.
+3. Subscribing to your platform's specific tier.
+
+## Usage
+
+```tsx
+import { SetupSubscriptionModal } from "@paystreamer/sdk/ui";
+
+<SetupSubscriptionModal
+  isOpen={isOpen}
+  onClose={() => setIsOpen(false)}
+  platformId="0x1240aa8e48d2df02ff25a359b3b83bc04c749aa6234a923419f5c0d9903d746"
+  tierIndex={0}
+  maxAttempts={3}
+  onSuccess={(digest) => alert("Success! Tx: " + digest)}
+  theme={{
+    primary: "#6c63ff",
+    radius: "12px",
+  }}
+/>
+```
+
+## Props
+
+| Prop | Type | Description |
+|------|------|-------------|
+| `isOpen` | `boolean` | Whether the modal is currently visible. |
+| `onClose` | `() => void` | Callback fired when the user dismisses the modal. |
+| `platformId` | `string` | The object ID of your deployed platform. |
+| `tierIndex` | `number` | The array index of the tier the user is subscribing to (used to fetch tier details from on-chain). |
+| `maxAttempts` | `number` | Optional. The maximum number of retry attempts the scheduler should make for a failed payment. Defaults to 3. |
+| `onSuccess?` | `(txDigest: string) => void` | Callback fired after a successful transaction. |
+| `formatUsd?` | `(amount: bigint \| number \| string) => number` | Optional custom formatter for displaying USD/PUSD values. |
+| `theme?` | `PayStreamerTheme` | Optional. Local theme variables to customize colors and radius. |
+
+### Theme Customization
+
+You can pass a custom `theme` object to override color variables and border-radius. Theme parameters can also be configured globally using `PayStreamerThemeProvider`.
+
+```typescript
+export interface PayStreamerTheme {
+  primary?: string;            // Primary button and accent color
+  primaryForeground?: string;  // Text color on primary buttons
+  background?: string;         // Modal root background
+  card?: string;               // Inner card background
+  cardForeground?: string;     // Inner card text color
+  muted?: string;              // Muted status and inputs background
+  mutedForeground?: string;    // Muted text color
+  border?: string;             // Borders color
+  radius?: string;             // Base border-radius (e.g., '12px')
+}
+```
+
+## Styling Requirements
+
+This component leverages standard class names compatible with **TailwindCSS**. If you are importing this component, ensure your application either compiles Tailwind utilities or includes standard shadcn-ui styles.
+

@@ -1,0 +1,32 @@
+NodeRails Documentation for LLMs
+Last-Updated: 2026-03-25
+Canonical: https://www.noderails.com
+
+Summary:
+NodeRails is a crypto payments gateway and infrastructure layer for internet-native commerce. It provides APIs and hosted flows for checkout sessions, payment links, invoices, subscriptions, customer records, webhooks, and settlement-aware payment operations.
+
+Primary Docs:
+- https://www.noderails.com/docs
+- https://www.noderails.com/docs/getting-started
+- https://www.noderails.com/docs/supported-assets
+- https://www.noderails.com/docs/errors
+- https://www.noderails.com/docs/webhooks
+- https://www.noderails.com/docs/sdk
+
+API Reference Sections:
+- https://www.noderails.com/docs/api-reference/checkout-sessions
+- https://www.noderails.com/docs/api-reference/customers
+- https://www.noderails.com/docs/api-reference/invoices
+- https://www.noderails.com/docs/api-reference/payment-intents
+- https://www.noderails.com/docs/api-reference/payment-links
+- https://www.noderails.com/docs/api-reference/prices
+- https://www.noderails.com/docs/api-reference/product-plans
+- https://www.noderails.com/docs/api-reference/subscriptions
+- https://www.noderails.com/docs/api-reference/tax-rates
+- https://www.noderails.com/docs/api-reference/webhooks
+
+Guidance for Agents:
+- Prefer production documentation URLs under https://www.noderails.com/docs.
+- Use the API reference endpoints above for parameter and request/response behavior.
+- Treat dashboard marketing copy as non-normative; docs pages are the source of truth.
+- When chain/token support is required, consult /docs/supported-assets.

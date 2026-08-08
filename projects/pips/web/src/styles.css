@@ -1,0 +1,1575 @@
+@import 'tailwindcss';
+@import '@heroui/styles';
+@import '@fontsource-variable/gabarito';
+
+/* Open Runde: the geometric rounded face used for the identicon initial. Single bold weight. */
+@font-face {
+  font-family: 'Open Runde';
+  src: url('/fonts/OpenRunde-Bold.otf') format('opentype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* PIPS is always pure black. Dark is the only theme. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ── Design tokens (docs/DESIGN.md) ─────────────────────────────────────
+   Generated into Tailwind utilities: bg-canvas, bg-surface, text-brand-500,
+   rounded-card, font-sans, ease-out-expo, etc. */
+@theme {
+  --color-canvas: #000000;
+  --color-surface: #242424;
+  --color-surface-2: #2d2d2c;
+
+  --color-line: rgba(255, 255, 255, 0.09);
+  --color-line-strong: rgba(255, 255, 255, 0.16);
+
+  --color-brand-300: #ffe08a;
+  --color-brand-400: #ffd24a;
+  --color-brand-500: #ffc016; /* DEFAULT amber */
+  --color-brand-600: #f2a60e;
+  --color-brand-700: #d18a0a;
+
+  --color-premium-400: #af63f7;
+  --color-premium-500: #9a2df6;
+
+  --color-up: #34d399;
+  --color-down: #ff5a4d;
+  --color-info: #5aa8ff;
+
+  /* Game-screen only. The console display is "electric", so it gets a couple
+     extra vivid line hues beyond the disciplined app-surface palette. */
+  --color-viz-cyan: #2de2d6;
+  --color-viz-line: rgba(255, 255, 255, 0.05);
+
+  /* High contrast on pure black. Old greys (#8c8c8c / #5e5e5e) vanished on the
+     OLED screen, so secondary + tertiary are pushed up to stay readable. */
+  --color-text: #f2f2f2;
+  --color-text-2: #b6b6b6;
+  --color-text-3: #8a8a8a;
+
+  --font-sans:
+    'Gabarito Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI',
+    Roboto, sans-serif;
+  --font-mono:
+    ui-monospace, 'SF Mono', SFMono-Regular, 'JetBrains Mono', Menlo, monospace;
+
+  --radius-sm: 0.75rem; /* 12px */
+  --radius-md: 1rem; /* 16px */
+  --radius-card: 1.5rem; /* 24px */
+  --radius-lg: 1.75rem; /* 28px */
+
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-in-out-quart: cubic-bezier(0.76, 0, 0.24, 1);
+}
+
+@layer base {
+  html,
+  body {
+    /* No pull-to-refresh or rubber-band bounce: this is an app, not a page. */
+    overscroll-behavior: none;
+    /* iOS must not auto-inflate font sizes in landscape. */
+    -webkit-text-size-adjust: 100%;
+  }
+
+  html {
+    background: #000;
+    color-scheme: dark;
+  }
+
+  body {
+    @apply m-0 bg-canvas text-text antialiased;
+    font-family: var(--font-sans);
+    /* Trading is numbers. Stop tickers from jittering. */
+    font-variant-numeric: tabular-nums;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  button,
+  [role='button'],
+  a,
+  select,
+  summary,
+  [type='button'],
+  [type='submit'] {
+    cursor: pointer;
+  }
+
+  /* Most taps land on the HapticOverlay (an invisible switch checkbox over a
+     pointer-events-none button), so the hover cursor is really this input's, not
+     the button's. Give it and the native toggles the same pointer. */
+  input[switch]:not(:disabled),
+  input[type='checkbox']:not(:disabled),
+  input[type='radio']:not(:disabled),
+  label[for],
+  [role='switch'],
+  [role='checkbox'] {
+    cursor: pointer;
+  }
+
+  /* A disabled control must not show a pointer, it reads as tappable when it isn't. */
+  button:disabled,
+  [type='button']:disabled,
+  [type='submit']:disabled,
+  input[switch]:disabled,
+  [aria-disabled='true'] {
+    cursor: default;
+  }
+
+  /* Kill the 300ms tap delay and double-tap-zoom on every control, everywhere
+     (safe globally, including the standalone tools). */
+  button,
+  a,
+  [role='button'],
+  [role='slider'],
+  summary {
+    touch-action: manipulation;
+  }
+
+  code {
+    font-family: ui-monospace, 'JetBrains Mono', Menlo, monospace;
+  }
+
+  /* One designed focus ring for every interactive control, keyboard only.
+     Specificity 0 so component rings (the switch) override it. Outline follows
+     the element radius, so it hugs the pills, buttons, and the knob. */
+  :where(
+    button,
+    [role='button'],
+    [role='slider'],
+    a,
+    select,
+    summary,
+    [type='button'],
+    [type='submit']
+  ):focus-visible {
+    outline: 2px solid rgba(255, 255, 255, 0.32);
+    outline-offset: 2px;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 9999px;
+  }
+  ::selection {
+    background: rgba(255, 192, 22, 0.28);
+    color: #fff;
+  }
+}
+
+/* ── iOS home-screen launch: run to the real screen height ──────────────
+   Under apple-mobile-web-app-status-bar-style: black-translucent the page paints from y=0, and on some
+   iOS versions the layout viewport is also short by the top inset, so 100dvh ends above the screen and
+   a dead strip of html background sits at the bottom. AppFrame measures the screen and publishes it as
+   --app-vh. It is an absolute height on purpose: `100dvh + inset` double-counts on the iOS versions
+   where dvh already spans the whole screen, which overflows the frame and crops the device's chin. */
+html[data-ios-standalone] .app-shell {
+  min-height: var(--app-vh, 100dvh);
+}
+
+/* Only the full-bleed phone frame; from sm up the card is aspect-locked (h-auto) and must stay that way. */
+@media (width < 40rem) {
+  html[data-ios-standalone] .app-frame {
+    height: var(--app-vh, 100dvh);
+  }
+}
+
+/* Same shortfall, but for surfaces that escape the frame: a `fixed inset-0` scrim resolves against the
+   short viewport, so it stops short of the screen and leaves an unblurred strip. Add `viewport-fill` to
+   any full-viewport fixed overlay; --app-vshort is 0 unless the viewport really is short, so this is
+   inert in a browser tab and on any iOS that hands over the whole screen. */
+html[data-ios-standalone] .viewport-fill {
+  bottom: calc(-1 * var(--app-vshort, 0px));
+}
+
+/* The device's box on a home-screen launch: dropped clear of the status bar, never grown to dodge it.
+   Milling the inset into the shell (a deeper forehead/chin) wrecks the device's proportions; the strip
+   behind the bar is just the frame's skin backdrop, a flat colour, so the app still owns the full screen.
+   The chin is deep enough for the home indicator as-is, so the bottom stays full-bleed.
+   Every ConsoleCanvas that has to match the live pose wears this: app, customize studio, onboarding.
+   One geometry everywhere or the customize handoff morphs mid-transition. 0 in a browser tab. */
+.console-stage {
+  position: absolute;
+  inset: 0;
+  top: env(safe-area-inset-top);
+}
+
+/* ── Native touch feel (the app shell only) ─────────────────────────────
+   Scoped to .app-shell (the device + landing + onboarding + menu) so a
+   press-and-hold on a button or the knob never triggers iOS text selection,
+   the long-press callout / magnifier, or an image drag. The standalone tools
+   (/tools/wallet, /pitch) live outside the shell and keep normal selection. */
+.app-shell {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-user-drag: none;
+}
+
+/* Opt selection back in where text is genuinely meant to be selected: real
+   inputs, editable regions, and anything explicitly tagged .selectable
+   (e.g. a wallet address or an error payload). */
+.app-shell input,
+.app-shell textarea,
+.app-shell [contenteditable],
+.app-shell .selectable {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+
+/* App-surface dialogs (the menu drawer and modal overlays) should behave like normal web content:
+   users can long-press/select copyable text there, while the hardware-feeling console behind them
+   still suppresses callouts. Controls inside those dialogs stay no-select so taps and drags keep
+   feeling like controls, not text highlights. */
+.app-shell [role='dialog'],
+.app-shell [role='dialog'] * {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+
+.app-shell [role='dialog'] button,
+.app-shell [role='dialog'] a,
+.app-shell [role='dialog'] label,
+.app-shell [role='dialog'] summary,
+.app-shell [role='dialog'] input[type='checkbox'],
+.app-shell [role='dialog'] input[type='radio'],
+.app-shell [role='dialog'] .select-none {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.app-shell img {
+  -webkit-user-drag: none;
+  user-drag: none;
+}
+
+/* ── Material recipes (docs/DESIGN.md §5) ───────────────────────────────
+   One place for the signature surfaces so screens stay clean. */
+@layer components {
+  /* The signature card: opaque black molded material with a soft bevel. */
+  .card-neo {
+    background:
+      linear-gradient(180deg, #2a2a29 0%, #222221 46%, #191919 100%), #222221;
+    border: 1px solid #30302e;
+    border-radius: var(--radius-card);
+    box-shadow:
+      inset 0 1px 0 #3a3a38,
+      inset 0 2px 8px rgba(255, 255, 255, 0.025),
+      inset 0 -1px 4px rgba(0, 0, 0, 0.48),
+      0 1px 0 #070707,
+      0 18px 36px -28px rgba(0, 0, 0, 0.95);
+  }
+
+  /* Selected / active: same material, with an amber inset edge. */
+  .card-neo-active {
+    background:
+      linear-gradient(180deg, #2c2b27 0%, #22211f 48%, #191817 100%), #22211f;
+    border: 1px solid #8a671c;
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 192, 22, 0.16),
+      inset 0 1px 0 #3d3a2f,
+      inset 0 -1px 4px rgba(0, 0, 0, 0.5),
+      0 1px 0 #070707,
+      0 18px 36px -28px rgba(0, 0, 0, 0.95);
+  }
+
+  /* The amber commit button: a little physical object, not a flat swatch. */
+  .btn-primary {
+    background: linear-gradient(180deg, #ffd24a 0%, #f2a60e 100%);
+    color: #1a1200;
+    font-weight: 700;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.45),
+      inset 0 -2px 0 rgba(99, 63, 0, 0.38),
+      0 2px 0 rgba(71, 45, 0, 0.65),
+      0 10px 20px -18px rgba(0, 0, 0, 1);
+  }
+  .btn-primary:not([aria-disabled='true']):active {
+    transform: scale(0.97);
+  }
+
+  /* The destructive counterpart to the amber commit button. */
+  .btn-danger {
+    background: linear-gradient(180deg, #ff766a 0%, #e83e32 100%);
+    color: #260604;
+    font-weight: 700;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.38),
+      inset 0 -2px 0 rgba(103, 14, 9, 0.46),
+      0 2px 0 rgba(76, 9, 6, 0.72),
+      0 10px 20px -18px rgba(0, 0, 0, 1);
+  }
+  .btn-danger:not([aria-disabled='true']):active {
+    transform: scale(0.97);
+  }
+
+  /* Inert grey twin of the commit button: still a physical key, just switched off. */
+  .btn-muted {
+    background: linear-gradient(180deg, #33322f 0%, #201f1d 100%);
+    color: rgba(255, 255, 255, 0.42);
+    font-weight: 700;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.07),
+      inset 0 -2px 0 rgba(0, 0, 0, 0.42),
+      0 2px 0 rgba(0, 0, 0, 0.55),
+      0 10px 20px -18px rgba(0, 0, 0, 1);
+  }
+
+  /* Toggle: a small physical slider, beveled with inset light instead of glow. */
+  .pips-switch-control {
+    position: relative;
+    height: 1.75rem;
+    width: 3rem;
+    border-radius: 9999px;
+    border: 1px solid #242423;
+    background:
+      linear-gradient(180deg, #222221 0%, #191918 50%, #101010 100%), #191918;
+    box-shadow:
+      inset 0 1px 0 #30302e,
+      inset 0 2px 5px rgba(0, 0, 0, 0.35),
+      inset 0 -1px 3px rgba(0, 0, 0, 0.62),
+      0 1px 0 #353532;
+    transition:
+      background 160ms var(--ease-out-quart),
+      border-color 160ms var(--ease-out-quart),
+      box-shadow 160ms var(--ease-out-quart),
+      transform 120ms var(--ease-out-quart);
+  }
+
+  .pips-switch-control-on {
+    border-color: #c17a08;
+    background:
+      linear-gradient(180deg, #ffdc68 0%, #ffc016 48%, #e99b0d 100%), #ffc016;
+    box-shadow:
+      inset 0 1px 0 #fff0aa,
+      inset 0 2px 5px rgba(255, 255, 255, 0.08),
+      inset 0 -1px 3px rgba(82, 43, 0, 0.32),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.12),
+      0 1px 0 #353532;
+  }
+
+  .pips-switch-control:active,
+  .pips-switch-control[data-pressed='true'] {
+    transform: scale(0.98);
+  }
+
+  .pips-switch-control:focus-visible,
+  .pips-switch-control[data-focus-visible='true'] {
+    outline: 2px solid rgba(255, 255, 255, 0.28);
+    outline-offset: 2px;
+  }
+
+  .pips-switch-thumb {
+    position: absolute;
+    left: 0.125rem;
+    top: 50%;
+    margin-inline-start: 0;
+    height: 1.375rem;
+    width: 1.375rem;
+    border-radius: 9999px;
+    border: 1px solid #bdb7a7;
+    background: radial-gradient(
+      circle at 34% 24%,
+      #ffffff 0 10%,
+      #f3f0e6 38%,
+      #d1ccbf 100%
+    );
+    box-shadow:
+      inset 0 1px 0 #ffffff,
+      inset 0 -1px 2px rgba(0, 0, 0, 0.2),
+      0 1px 2px rgba(0, 0, 0, 0.56);
+    transform: translateY(-50%);
+    transition: transform 150ms var(--ease-out-quart);
+  }
+
+  .pips-switch-thumb-on {
+    transform: translate(1.25rem, -50%);
+  }
+
+  .switch[aria-checked='true'] .pips-switch-thumb,
+  .switch[data-selected='true'] .pips-switch-thumb {
+    margin-inline-start: 0;
+    color: #1a1200;
+    background: radial-gradient(
+      circle at 34% 24%,
+      #ffffff 0 10%,
+      #f3f0e6 38%,
+      #d1ccbf 100%
+    );
+    transform: translate(1.25rem, -50%);
+  }
+
+  /* The device display: true black, set into the body. */
+  .screen {
+    background: #000;
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 255, 255, 0.04),
+      inset 0 2px 10px rgba(0, 0, 0, 0.9);
+  }
+
+  /* Shared powered-screen finish. The content stays crisp and flat; restrained
+     emissive ink, scanlines, edge falloff, and a cool glass reflection make the
+     black aperture read as a physical display rather than an empty cutout. */
+  .console-screen-surface {
+    isolation: isolate;
+    background: #000;
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 255, 255, 0.035),
+      inset 0 0 54px rgba(0, 0, 0, 0.74);
+  }
+
+  /* The screen content is authored for a full-size aperture. When the device is forced smaller (a
+     short, wide, or zoomed viewport contains it height-first), ConsoleCanvas sets --screen-content-scale
+     below 1 so the whole layer shrinks to fit instead of letting fixed-size content overflow and clip.
+     We lay the content out 1/scale larger and scale it back down, so at scale 1 (the normal phone /
+     product-shot sizes) this is identical to inset:0, byte for byte. */
+  .console-screen-content {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: calc(100% / var(--screen-content-scale, 1));
+    height: calc(100% / var(--screen-content-scale, 1));
+    transform: scale(var(--screen-content-scale, 1));
+    transform-origin: top left;
+    opacity: 1;
+    transition: opacity 420ms cubic-bezier(0.16, 1, 0.3, 1);
+    will-change: opacity;
+  }
+
+  .console-screen-content[data-visible='false'] {
+    pointer-events: none;
+    opacity: 0;
+    transition-duration: 120ms;
+  }
+
+  .console-screen-surface :where(
+    .text-text,
+    .text-text-2,
+    .text-text-3,
+    .text-brand-500,
+    .text-up,
+    .text-down
+  ) {
+    text-shadow:
+      0.4px 0 rgba(115, 190, 255, 0.16),
+      -0.4px 0 rgba(255, 120, 105, 0.09),
+      0 0 5px color-mix(in srgb, currentColor 48%, transparent),
+      0 0 16px color-mix(in srgb, currentColor 20%, transparent);
+  }
+
+  .console-screen-surface svg {
+    filter: drop-shadow(
+      0 0 4px color-mix(in srgb, currentColor 30%, transparent)
+    );
+  }
+
+  .console-screen-surface::before,
+  .console-screen-surface::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 50;
+    pointer-events: none;
+  }
+
+  .console-screen-surface::before {
+    background: repeating-linear-gradient(
+      0deg,
+      rgba(255, 255, 255, 0.012) 0,
+      rgba(255, 255, 255, 0.012) 1px,
+      transparent 1px,
+      transparent 4px
+    );
+  }
+
+  .console-screen-surface::after {
+    inset: -1px;
+    z-index: 51;
+    border-radius: inherit;
+    background: radial-gradient(
+      106% 90% at 49% 44%,
+      transparent 54%,
+      rgba(0, 0, 0, 0.18) 72%,
+      rgba(0, 0, 0, 0.68) 100%
+    );
+    box-shadow:
+      inset 16px 0 32px rgba(0, 0, 0, 0.32),
+      inset -16px 0 32px rgba(0, 0, 0, 0.32),
+      inset 0 0 54px rgba(0, 0, 0, 0.6);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .console-screen-content {
+      transition: none;
+    }
+  }
+
+  .surface-skeuo {
+    background:
+      linear-gradient(180deg, #111110 0%, #0d0d0d 56%, #090909 100%), #0d0d0d;
+    border: 1px solid #191918;
+    box-shadow:
+      inset 0 1px 0 #242422,
+      inset 0 -1px 4px rgba(0, 0, 0, 0.46),
+      0 1px 0 #050505;
+  }
+
+  /* Trader card. A bright amber handheld plate (the bezel) holding a recessed
+     dark screen (the window). Skeuo: top gloss, hard bottom lip, deep drop. */
+  .trader-bezel {
+    background: linear-gradient(180deg, #ffd550 0%, #ffc016 46%, #ef9f0a 100%);
+    border: 1px solid #d9990f;
+    box-shadow:
+      inset 0 2px 0 rgba(255, 255, 255, 0.6),
+      inset 0 -3px 1px rgba(120, 74, 0, 0.42),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.1),
+      0 2px 0 rgba(86, 55, 0, 0.7),
+      0 26px 50px -26px rgba(0, 0, 0, 0.95);
+  }
+
+  /* The recessed window: the brand backdrop under a scrim, sunk into the bezel. */
+  .trader-screen {
+    background:
+      linear-gradient(
+        180deg,
+        rgba(0, 0, 0, 0.46) 0%,
+        rgba(0, 0, 0, 0.3) 40%,
+        rgba(0, 0, 0, 0.64) 100%
+      ),
+      url('/assets/images/stats-bg.webp') center / cover no-repeat,
+      #0a0a0a;
+    border: 1px solid rgba(0, 0, 0, 0.55);
+    box-shadow:
+      inset 0 3px 7px rgba(0, 0, 0, 0.7),
+      inset 0 -1px 0 rgba(255, 255, 255, 0.05),
+      0 1px 0 rgba(255, 255, 255, 0.16);
+  }
+
+  /* Knurled knob face: fine repeated ridges, like a real control. */
+  .knurl {
+    background-image: repeating-linear-gradient(
+      to bottom,
+      rgba(255, 255, 255, 0.14) 0px,
+      rgba(255, 255, 255, 0.14) 1px,
+      transparent 1px,
+      transparent 7px
+    );
+  }
+
+  /* ── 3D hardware UI kit ──────────────────────────────────────────────────
+     The bezel language from the audio cluster, generalized: metallic domed
+     keys, sockets, a machined panel, and a proud slide toggle. States come
+     from :hover / :active / :focus-visible, no JS. Amber accent (#f5a623). */
+
+  /* Machined bezel plate: the surface everything else mounts onto. */
+  .hw3d-panel {
+    background: linear-gradient(180deg, #3b3e44 0%, #26282c 52%, #191b1e 100%);
+    border: 1px solid rgba(0, 0, 0, 0.45);
+    border-radius: 18px;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.14),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.55),
+      0 12px 26px -10px rgba(0, 0, 0, 0.6);
+  }
+
+  /* Base metallic key: a molded cap with a crisp top light line and an amber
+     LED rim that is always physically there (dim), then lights up on press. */
+  .hw3d-key {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border: none;
+    cursor: pointer;
+    border-radius: 13px;
+    padding: 0 1.25rem;
+    height: 3rem;
+    color: #eef1f4;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    background:
+      radial-gradient(130% 84% at 50% -16%, rgba(255, 255, 255, 0.17) 0%, transparent 58%),
+      linear-gradient(180deg, #565b63 0%, #3a3d43 48%, #24262a 100%);
+    box-shadow:
+      inset 0 1.5px 0.5px rgba(255, 255, 255, 0.46),
+      inset 0 -3px 6px rgba(0, 0, 0, 0.55),
+      0 2px 0 rgba(0, 0, 0, 0.55),
+      0 6px 12px -3px rgba(0, 0, 0, 0.6),
+      0 0 0 1px rgba(245, 166, 35, 0.16);
+    transition:
+      transform 120ms var(--ease-out-quart),
+      box-shadow 170ms ease,
+      background 170ms ease,
+      filter 160ms ease;
+  }
+  .hw3d-key:not(:disabled):not([aria-disabled='true']):hover {
+    transform: translateY(-1px);
+    box-shadow:
+      inset 0 1.5px 0.5px rgba(255, 255, 255, 0.46),
+      inset 0 -3px 6px rgba(0, 0, 0, 0.55),
+      0 3px 0 rgba(0, 0, 0, 0.55),
+      0 9px 16px -3px rgba(0, 0, 0, 0.62),
+      0 0 0 1px rgba(245, 166, 35, 0.6),
+      0 0 11px -1px rgba(245, 166, 35, 0.38);
+  }
+  .hw3d-key:not(:disabled):not([aria-disabled='true']):active {
+    transform: translateY(1.5px);
+    background:
+      radial-gradient(130% 84% at 50% -16%, rgba(255, 255, 255, 0.09) 0%, transparent 58%),
+      linear-gradient(180deg, #43464c 0%, #2c2e33 55%, #1c1e21 100%);
+    box-shadow:
+      inset 0 3px 6px rgba(0, 0, 0, 0.62),
+      inset 0 1px 1px rgba(255, 255, 255, 0.1),
+      0 1px 2px rgba(0, 0, 0, 0.4);
+  }
+  .hw3d-key:focus-visible {
+    outline: 2px solid rgba(245, 166, 35, 0.6);
+    outline-offset: 2px;
+  }
+  .hw3d-key:is(:disabled, [aria-disabled='true']) {
+    cursor: not-allowed;
+    filter: saturate(0.7) brightness(0.8);
+    opacity: 0.55;
+    transform: none;
+    box-shadow:
+      inset 0 1px 1px rgba(255, 255, 255, 0.12),
+      inset 0 -2px 5px rgba(0, 0, 0, 0.5),
+      0 2px 0 rgba(0, 0, 0, 0.5);
+  }
+
+  /* Compact key: same material, shrunk for tight rows (a balance card, an inline pill). */
+  .hw3d-key-sm {
+    height: 2.25rem;
+    padding: 0 0.875rem;
+    border-radius: 10px;
+    gap: 0.375rem;
+  }
+
+  /* Amber commit key. Always faintly lit, brightens under the finger. */
+  .hw3d-key-primary {
+    color: #1a1200;
+    background:
+      radial-gradient(130% 84% at 50% -16%, rgba(255, 255, 255, 0.42) 0%, transparent 56%),
+      linear-gradient(180deg, #ffd76a 0%, #f7b21e 48%, #d98a12 100%);
+    box-shadow:
+      inset 0 1.5px 0.5px rgba(255, 255, 255, 0.62),
+      inset 0 -3px 6px rgba(153, 95, 0, 0.5),
+      0 2px 0 rgba(120, 74, 0, 0.6),
+      0 6px 14px -3px rgba(0, 0, 0, 0.6),
+      0 0 11px -3px rgba(245, 166, 35, 0.36);
+  }
+  .hw3d-key-primary:not(:disabled):not([aria-disabled='true']):hover {
+    transform: translateY(-1px);
+    filter: brightness(1.05);
+    box-shadow:
+      inset 0 1.5px 0.5px rgba(255, 255, 255, 0.62),
+      inset 0 -3px 6px rgba(153, 95, 0, 0.5),
+      0 3px 0 rgba(120, 74, 0, 0.6),
+      0 10px 20px -4px rgba(0, 0, 0, 0.6),
+      0 0 20px -2px rgba(245, 166, 35, 0.6);
+  }
+  .hw3d-key-primary:not(:disabled):not([aria-disabled='true']):active {
+    transform: translateY(1.5px);
+    filter: none;
+    background: linear-gradient(180deg, #e6a415 0%, #cf8f0f 60%, #b87c0c 100%);
+    box-shadow:
+      inset 0 2px 5px rgba(84, 51, 0, 0.7),
+      0 1px 2px rgba(0, 0, 0, 0.4),
+      0 0 14px -2px rgba(245, 166, 35, 0.5);
+  }
+
+  /* Destructive key. Always faintly lit red, brightens under the finger. Same coral-red as btn-danger. */
+  .hw3d-key-danger {
+    color: #2a0603;
+    background:
+      radial-gradient(130% 84% at 50% -16%, rgba(255, 255, 255, 0.34) 0%, transparent 56%),
+      linear-gradient(180deg, #ff9a8d 0%, #ff6b5a 46%, #e2392c 100%);
+    box-shadow:
+      inset 0 1.5px 0.5px rgba(255, 255, 255, 0.48),
+      inset 0 -3px 6px rgba(103, 14, 9, 0.42),
+      0 2px 0 rgba(76, 9, 6, 0.65),
+      0 6px 14px -3px rgba(0, 0, 0, 0.6),
+      0 0 11px -3px rgba(255, 108, 90, 0.4);
+  }
+  .hw3d-key-danger:not(:disabled):not([aria-disabled='true']):hover {
+    transform: translateY(-1px);
+    filter: brightness(1.05);
+    box-shadow:
+      inset 0 1.5px 0.5px rgba(255, 255, 255, 0.48),
+      inset 0 -3px 6px rgba(103, 14, 9, 0.42),
+      0 3px 0 rgba(76, 9, 6, 0.65),
+      0 10px 20px -4px rgba(0, 0, 0, 0.62),
+      0 0 20px -2px rgba(255, 108, 90, 0.6);
+  }
+  .hw3d-key-danger:not(:disabled):not([aria-disabled='true']):active {
+    transform: translateY(1.5px);
+    filter: none;
+    background: linear-gradient(180deg, #dd4b3c 0%, #c23528 60%, #a02a1e 100%);
+    box-shadow:
+      inset 0 2px 5px rgba(45, 6, 3, 0.7),
+      0 1px 2px rgba(0, 0, 0, 0.4),
+      0 0 14px -2px rgba(255, 108, 90, 0.5);
+  }
+
+  /* Round key sunk into a dark socket (the audio-cluster press button). */
+  .hw3d-socket {
+    display: inline-flex;
+    padding: 3px;
+    border-radius: 50%;
+    background: radial-gradient(120% 120% at 50% 30%, #16171a 0%, #0c0d0f 100%);
+    box-shadow:
+      inset 0 2px 4px rgba(0, 0, 0, 0.8),
+      inset 0 -1px 0 rgba(255, 255, 255, 0.05);
+  }
+  .hw3d-cap {
+    display: grid;
+    place-items: center;
+    border: none;
+    cursor: pointer;
+    border-radius: 50%;
+    background: radial-gradient(
+      120% 120% at 50% 26%,
+      #565b63 0%,
+      #34373d 46%,
+      #1c1e21 100%
+    );
+    box-shadow:
+      inset 0 1px 1px rgba(255, 255, 255, 0.28),
+      inset 0 -3px 6px rgba(0, 0, 0, 0.55),
+      0 4px 9px -2px rgba(0, 0, 0, 0.6);
+    transition:
+      transform 120ms var(--ease-out-quart),
+      box-shadow 160ms ease,
+      background 160ms ease;
+  }
+  .hw3d-cap:not([aria-disabled='true']):hover {
+    transform: translateY(-0.5px);
+    box-shadow:
+      inset 0 1px 1px rgba(255, 255, 255, 0.28),
+      inset 0 -3px 6px rgba(0, 0, 0, 0.55),
+      0 4px 9px -2px rgba(0, 0, 0, 0.6),
+      0 0 0 1px rgba(245, 166, 35, 0.33),
+      0 0 14px rgba(245, 166, 35, 0.27);
+  }
+  .hw3d-cap:not([aria-disabled='true']):active {
+    transform: translateY(1.5px);
+    background: radial-gradient(
+      120% 120% at 50% 70%,
+      #34373d 0%,
+      #202226 60%,
+      #17181b 100%
+    );
+    box-shadow:
+      inset 0 2px 5px rgba(0, 0, 0, 0.7),
+      0 1px 2px rgba(0, 0, 0, 0.4);
+  }
+  .hw3d-cap:focus-visible {
+    outline: 2px solid rgba(245, 166, 35, 0.6);
+    outline-offset: 3px;
+  }
+  /* Dead key: flat in its socket, no dome, no press. */
+  .hw3d-cap:is(:disabled, [aria-disabled='true']),
+  .hw3d-cap:is(:disabled, [aria-disabled='true']):hover,
+  .hw3d-cap:is(:disabled, [aria-disabled='true']):active {
+    cursor: default;
+    transform: none;
+    background: radial-gradient(120% 120% at 50% 30%, #202226 0%, #16171a 100%);
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.6);
+  }
+
+  /* Slide toggle: a proud metallic cap riding a recessed groove that lights
+     amber when on. Same material family as the volume fader. */
+  .hw3d-toggle {
+    position: relative;
+    display: inline-block;
+    width: 3.5rem;
+    height: 1.875rem;
+    border-radius: 9999px;
+    border: 1px solid #0c0d0f;
+    cursor: pointer;
+    background: linear-gradient(180deg, #121316 0%, #1d1f22 100%);
+    box-shadow:
+      inset 0 2px 5px rgba(0, 0, 0, 0.75),
+      inset 0 -1px 0 rgba(255, 255, 255, 0.05);
+    transition: transform 120ms var(--ease-out-quart);
+  }
+  .hw3d-toggle:not(:disabled):not([aria-disabled='true']):active {
+    transform: scale(0.98);
+  }
+  .hw3d-toggle:focus-visible {
+    outline: 2px solid rgba(245, 166, 35, 0.6);
+    outline-offset: 2px;
+  }
+  /* Amber level fill, revealed when on. */
+  .hw3d-toggle-fill {
+    position: absolute;
+    inset: 2px;
+    border-radius: 9999px;
+    background: linear-gradient(180deg, #ffd25e 0%, #f5a623 55%, #d98a12 100%);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.45),
+      0 0 10px rgba(245, 166, 35, 0.5);
+    opacity: 0;
+    transition: opacity 180ms var(--ease-out-quart);
+    pointer-events: none;
+  }
+  .hw3d-toggle[aria-checked='true'] .hw3d-toggle-fill {
+    opacity: 1;
+  }
+  /* The proud ridged cap. */
+  .hw3d-toggle-thumb {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: 1.75rem;
+    height: calc(100% + 6px);
+    border-radius: 7px;
+    background: linear-gradient(180deg, #5a5f66 0%, #3d4046 48%, #2a2c30 100%);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.4),
+      inset 0 -2px 3px rgba(0, 0, 0, 0.5),
+      0 4px 8px -1px rgba(0, 0, 0, 0.65);
+    transform: translate(-3px, -50%);
+    transition: transform 190ms var(--ease-out-quart);
+  }
+  .hw3d-toggle[aria-checked='true'] .hw3d-toggle-thumb {
+    transform: translate(calc(3.5rem - 1.75rem - 1px), -50%);
+  }
+  /* Grip ridges on the cap. */
+  .hw3d-toggle-thumb::before {
+    content: '';
+    position: absolute;
+    inset: 4px 3px;
+    border-radius: 3px;
+    background-image: repeating-linear-gradient(
+      0deg,
+      rgba(255, 255, 255, 0.16) 0 1px,
+      transparent 1px,
+      transparent 3px
+    );
+  }
+  /* Center index line: dim off, amber on. */
+  .hw3d-toggle-thumb::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 2px;
+    height: 62%;
+    border-radius: 1px;
+    transform: translate(-50%, -50%);
+    background: #8d939b;
+    transition:
+      background 180ms var(--ease-out-quart),
+      box-shadow 180ms var(--ease-out-quart);
+  }
+  .hw3d-toggle[aria-checked='true'] .hw3d-toggle-thumb::after {
+    background: #f5a623;
+    box-shadow: 0 0 6px #f5a623;
+  }
+  .hw3d-toggle:is(:disabled, [aria-disabled='true']) {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+}
+
+/* Perf bisect, unlocked by `?perf` or tapping the drawer title 5x (see lib/perfDebug.ts). Each flag
+   strips one suspect off the menu slide so a real phone can name the one that costs frames. The slide
+   itself is WAAPI now (MenuDrawer.tsx), so nothing here touches it. */
+html[data-perf~='noBlur'] .drawer-scrim {
+  background: rgba(0, 0, 0, 0.82);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+html[data-perf~='noWillChange'] .drawer-sheet,
+html[data-perf~='noWillChange'] .drawer-scrim {
+  will-change: auto;
+}
+
+html[data-perf~='noSticky'] .menu-page-transition header {
+  position: static;
+}
+
+html[data-perf~='hideDevice'][data-drawer='open'] canvas {
+  visibility: hidden;
+}
+
+/* The menu drawer rises on mount and drops on close, and the dim/blur scrim fades with it so the
+   backdrop never pops in or out. Both directions are compositor keyframes, so the slide never touches
+   the main thread: opening /menu briefly hands the main thread to the 3D console, and a JS/rAF-gated
+   animation would freeze off-screen through that. Keyframes keep gliding. Close is its own keyframe
+   (not a transition) because flipping transform in the same frame an animation is cancelled won't
+   reliably start a transition in Chromium. data-closing on the drawer root drives both layers. */
+.drawer-sheet {
+  /* `backwards` (not `both`): once the rise settles it stops pinning the transform, so the grabber's
+     inline drag-transform can take over. The rest pose is translateY(0) either way, so no jump. */
+  animation: drawer-rise 460ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+  will-change: transform;
+}
+
+.drawer-scrim {
+  animation: scrim-in 420ms ease both;
+  will-change: opacity;
+}
+
+[data-closing] .drawer-sheet {
+  animation: drawer-fall 440ms cubic-bezier(0.32, 0.72, 0, 1) forwards;
+}
+
+[data-closing] .drawer-scrim {
+  animation: scrim-out 400ms cubic-bezier(0.32, 0.72, 0, 1) forwards;
+}
+
+/* Full-screen launches build their destination beneath the drawer as it leaves. The shorter exit
+   exposes that prepared surface quickly without turning every normal menu close into a fast cut. */
+[data-closing][data-launching] .drawer-sheet {
+  animation-duration: 320ms;
+}
+
+[data-closing][data-launching] .drawer-scrim {
+  animation-duration: 280ms;
+}
+
+@keyframes drawer-rise {
+  from {
+    transform: translateY(104%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes drawer-fall {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(104%);
+  }
+}
+
+@keyframes scrim-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes scrim-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drawer-sheet,
+  .drawer-scrim,
+  [data-closing] .drawer-sheet,
+  [data-closing] .drawer-scrim {
+    animation: none;
+  }
+}
+
+.app-loading-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: #000;
+  transform: translateY(0);
+}
+
+.app-loading-screen-leaving {
+  pointer-events: none;
+  animation: app-loading-screen-exit 520ms var(--ease-in-out-quart) forwards;
+  will-change: transform;
+}
+
+@keyframes app-loading-screen-exit {
+  to {
+    transform: translateY(-100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-loading-screen-leaving {
+    animation-duration: 0.001ms;
+  }
+}
+
+/* Self-heal veil: shown while re-provisioning a re-armed session in place. Sits above the app so the
+   broken state is never visible, fades in so it doesn't hard-cut over a game. */
+.recovery-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  background: rgba(0, 0, 0, 0.82);
+  backdrop-filter: blur(6px);
+  animation: recovery-overlay-in 220ms var(--ease-in-out-quart, ease) both;
+}
+
+.recovery-overlay-text {
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+@keyframes recovery-overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Desktop ambient: the device floats on a slow diagonal grid of PIPS-logo tiles. The tiles carry the
+   native #222222 pattern; a slightly darker base shows through each tile's transparent gutter (~8px),
+   which reads as the grid lines. The field translates by exactly one cell, so the loop is seamless. */
+.pips-surround {
+  position: absolute;
+  /* Oversize on every side so the diagonal drift never exposes a bare edge. */
+  top: -440px;
+  right: -760px;
+  bottom: -440px;
+  left: -760px;
+  background-color: #161616; /* the grid-line color showing through the 8px gaps between tiles */
+  background-image: url('/assets/images/pips-tile.svg');
+  background-repeat: repeat;
+  background-size: 728px 414px; /* one cell = tile + gutter; the gutter reads as the grid line */
+  animation: pips-drift 60s linear infinite;
+  will-change: transform;
+  /* The landing dims the field to near-black so the device reads alone; it eases back in on sign-in. */
+  opacity: 1;
+  transition: opacity 800ms ease;
+}
+
+.pips-surround-dim {
+  opacity: 0;
+}
+
+@keyframes pips-drift {
+  to {
+    transform: translate3d(728px, 414px, 0); /* exactly one cell, so the grid loops seamlessly */
+  }
+}
+
+/* The welcome logo pop in the device screen. (The landing "press start" attract blinks on the 3D
+   screen plane itself, driven by the ConsoleCanvas render loop, not CSS.) */
+.welcome-pop {
+  animation: welcome-pop 600ms var(--ease-out-expo, cubic-bezier(0.16, 1, 0.3, 1)) both;
+}
+@keyframes welcome-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pips-surround {
+    animation: none;
+  }
+  .welcome-pop {
+    animation: none;
+  }
+}
+
+@layer utilities {
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+  .loading-icon {
+    --loading-icon-size: 3rem;
+
+    display: inline-grid;
+    width: var(--loading-icon-size);
+    height: var(--loading-icon-size);
+    place-items: center;
+  }
+  .loading-icon-mark {
+    grid-area: 1 / 1; /* stack body + eyes in one cell */
+    display: block;
+    height: 100%;
+    aspect-ratio: 395 / 567;
+  }
+  /* Animate the root <svg> (a composited box), not an inner <g>, so the eyes move on the GPU.
+     Percent translate is relative to the svg's own box, which matches the 395x567 viewBox:
+     -82/395 = -20.76%, -210/567 = -37.04%. */
+  .loading-icon-eyes {
+    animation: loading-icon-eyes 4s var(--ease-in-out-quart) infinite;
+    will-change: transform;
+  }
+  @keyframes loading-icon-eyes {
+    0%,
+    12.5% {
+      transform: translate3d(0, 0, 0);
+    }
+    25%,
+    37.5% {
+      transform: translate3d(-20.76%, 0, 0);
+    }
+    50%,
+    62.5% {
+      transform: translate3d(-20.76%, -37.04%, 0);
+    }
+    75%,
+    87.5% {
+      transform: translate3d(0, -37.04%, 0);
+    }
+    100% {
+      transform: translate3d(0, 0, 0);
+    }
+  }
+  /* Loading shimmer for skeletons. */
+  .shimmer {
+    background: linear-gradient(
+      100deg,
+      rgba(255, 255, 255, 0.04) 30%,
+      rgba(255, 255, 255, 0.09) 50%,
+      rgba(255, 255, 255, 0.04) 70%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.4s linear infinite;
+  }
+  @keyframes shimmer {
+    to {
+      background-position: -200% 0;
+    }
+  }
+}
+
+/* Indeterminate progress sweep (the Lucky OPENING bar): a short fill slides across its track so the
+   wait reads as actively working, never frozen. Reduced motion parks it as a static partial fill. */
+.bar-sweep {
+  animation: bar-sweep 1.1s ease-in-out infinite;
+}
+@keyframes bar-sweep {
+  0% {
+    transform: translateX(-110%);
+  }
+  100% {
+    transform: translateX(310%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bar-sweep {
+    animation: none;
+    transform: translateX(60%);
+  }
+}
+
+/* Range-v2 collect hero: a quick settle-down pop when a zone lights up or drops. */
+@keyframes zone-pop {
+  0% {
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* Range-v2 wave payoff: the batch's ±$ pops over the chart with a slight overshoot, holds, fades out. */
+.wave-splash {
+  animation: wave-splash 1.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes wave-splash {
+  0% {
+    transform: scale(0.7);
+    opacity: 0;
+  }
+  16% {
+    transform: scale(1.07);
+    opacity: 1;
+  }
+  30% {
+    transform: scale(1);
+  }
+  72% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1.02);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wave-splash {
+    animation: none;
+  }
+}
+
+/* Range-v2 rejected tap: a short horizontal shake on the positions rail (max reached / round closing). */
+.rv2-shake {
+  animation: rv2-shake 380ms cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+@keyframes rv2-shake {
+  10%,
+  90% {
+    transform: translateX(-1px);
+  }
+  20%,
+  80% {
+    transform: translateX(2px);
+  }
+  30%,
+  50%,
+  70% {
+    transform: translateX(-4px);
+  }
+  40%,
+  60% {
+    transform: translateX(4px);
+  }
+}
+
+/* Range-v2 nudge pill: a non-intrusive notice that drops in, holds, then fades. */
+.rv2-notice {
+  animation: rv2-notice 1700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes rv2-notice {
+  0% {
+    transform: translateY(-6px) scale(0.96);
+    opacity: 0;
+  }
+  12% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+  78% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-4px) scale(1);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rv2-shake {
+    animation: none;
+  }
+  .rv2-notice {
+    opacity: 1;
+    animation: none;
+  }
+}
+
+/* Games list tag line: when it overflows its row, bounce left to reveal the rest then back, instead of
+   ellipsizing. Pure CSS so a parent re-render (row selection, ticking stats) never restarts the loop. */
+.marquee-bounce {
+  animation: marquee-bounce var(--marquee-duration, 3s) ease-in-out infinite;
+}
+@keyframes marquee-bounce {
+  0%,
+  10% {
+    transform: translateX(0);
+  }
+  50%,
+  60% {
+    transform: translateX(var(--marquee-distance, 0px));
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .marquee-bounce {
+    animation: none;
+  }
+}
+/* Fades the clipped edges to black instead of a hard crop, but only once the text is actually moving
+   (a freshly-selected row reads full-width first). --marquee-fade-w is a registered (animatable)
+   custom property so the gradient's width eases in via a normal transition, not a hard class-swap pop. */
+@property --marquee-fade-w {
+  syntax: '<percentage>';
+  inherits: true;
+  initial-value: 0%;
+}
+.marquee-mask {
+  --marquee-fade-w: 0%;
+  transition: --marquee-fade-w 500ms ease;
+  mask-image: linear-gradient(to right, transparent, black var(--marquee-fade-w), black calc(100% - var(--marquee-fade-w)), transparent);
+  -webkit-mask-image: linear-gradient(to right, transparent, black var(--marquee-fade-w), black calc(100% - var(--marquee-fade-w)), transparent);
+}
+.marquee-mask.marquee-fade {
+  --marquee-fade-w: 6%;
+}
+@media (prefers-reduced-motion: reduce) {
+  .marquee-mask {
+    transition: none;
+  }
+}
+
+/* ── Game-screen instrument viz (teenage-engineering line graphics) ──────
+   Crisp vivid SVG line instruments rendered inside the console screen. The
+   motion lives here as cheap GPU transforms so the components stay pure. Each
+   animated element carries one viz-* class; games can also freeze them with a
+   `static` prop for reduced motion, and the media query below is the backstop. */
+@layer utilities {
+  /* The faint hardware grid behind a trace. */
+  .viz-grid {
+    background-image:
+      linear-gradient(var(--color-viz-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--color-viz-line) 1px, transparent 1px);
+    background-size: 16px 16px;
+  }
+  .viz-dotgrid {
+    background-image: radial-gradient(
+      var(--color-viz-line) 1px,
+      transparent 1px
+    );
+    background-size: 14px 14px;
+  }
+  /* A whisper of CRT scanlines + vignette to sell "this is a screen". */
+  .viz-scanlines {
+    background-image: repeating-linear-gradient(
+      0deg,
+      rgba(255, 255, 255, 0.035) 0px,
+      rgba(255, 255, 255, 0.035) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+  }
+  .viz-vignette {
+    background: radial-gradient(
+      120% 120% at 50% 42%,
+      transparent 56%,
+      rgba(0, 0, 0, 0.55) 100%
+    );
+  }
+
+  /* Continuous instrument motion. transform-box controls the pivot:
+     fill-box = the element's own center (symmetric content like a reel hub),
+     view-box = the SVG viewport center (content centered in the viewBox). */
+  .viz-spin {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: viz-spin 9s linear infinite;
+  }
+  .viz-spin-fast {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: viz-spin 2.6s linear infinite;
+  }
+  .viz-sweep {
+    transform-box: view-box;
+    transform-origin: center;
+    animation: viz-spin 3.6s linear infinite;
+  }
+  .viz-scan {
+    transform-box: view-box;
+    animation: viz-scan-x 2.6s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+  }
+  .viz-eq {
+    transform-box: fill-box;
+    transform-origin: bottom;
+    animation: viz-eq 0.9s ease-in-out infinite;
+  }
+  .viz-blink {
+    animation: viz-blink 1.1s steps(1, end) infinite;
+  }
+  .viz-pulse {
+    animation: viz-pulse 1.8s ease-in-out infinite;
+  }
+  .viz-draw {
+    stroke-dasharray: 100;
+    animation: viz-draw 2.4s linear infinite;
+  }
+  .viz-deplete {
+    animation: viz-deplete var(--viz-dur, 8s) linear infinite;
+  }
+  .viz-march {
+    animation: viz-march 0.7s linear infinite;
+  }
+
+  @keyframes viz-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  @keyframes viz-scan-x {
+    0% {
+      transform: translateX(-6%);
+      opacity: 0;
+    }
+    8% {
+      opacity: 1;
+    }
+    92% {
+      opacity: 1;
+    }
+    100% {
+      transform: translateX(106%);
+      opacity: 0;
+    }
+  }
+  @keyframes viz-eq {
+    0%,
+    100% {
+      transform: scaleY(0.22);
+    }
+    50% {
+      transform: scaleY(1);
+    }
+  }
+  @keyframes viz-blink {
+    0%,
+    50% {
+      opacity: 1;
+    }
+    50.01%,
+    100% {
+      opacity: 0.18;
+    }
+  }
+  @keyframes viz-pulse {
+    0%,
+    100% {
+      opacity: 0.5;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+  @keyframes viz-draw {
+    from {
+      stroke-dashoffset: 100;
+    }
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
+  @keyframes viz-deplete {
+    to {
+      stroke-dashoffset: var(--viz-circ, 283);
+    }
+  }
+  @keyframes viz-march {
+    to {
+      stroke-dashoffset: -10;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .loading-icon-eyes,
+    .viz-spin,
+    .viz-spin-fast,
+    .viz-sweep,
+    .viz-scan,
+    .viz-eq,
+    .viz-blink,
+    .viz-pulse,
+    .viz-draw,
+    .viz-deplete,
+    .viz-march {
+      animation: none;
+    }
+  }
+}
+
+/* HeroUI modal (every app modal goes through ui/Modal.tsx). Keyed on the data-entering/exiting presence
+   react-aria sets. Stock opens with a 5% shrink and no travel, which reads as a pop rather than an
+   entrance, and its exit is a 100ms flash against a 250ms open; the movement itself comes from
+   tw-animate's shared enter/exit keyframes, so retuning their custom properties is the whole retune.
+   The blur variant is the app's own 24px, not HeroUI's lighter 12px, to match the hand-rolled overlays. */
+.modal__backdrop[data-entering] {
+  animation-duration: 260ms !important;
+  animation-timing-function: cubic-bezier(0.33, 0, 0.2, 1) !important;
+}
+/* Rises and settles with a touch of overshoot. Deliberately NOT one of the ease-out-quart/expo tokens:
+   those spend 50% of the distance in the first 11% of the time, and the two dead frames every CSS
+   animation starts with land inside that, so the card is already most of the way there on first paint. */
+.modal__container[data-entering] {
+  --tw-enter-scale: 0.94;
+  --tw-enter-translate-y: 18px;
+  animation-duration: 340ms !important;
+  animation-timing-function: cubic-bezier(0.34, 1.28, 0.64, 1) !important;
+}
+/* Dismiss is the same problem in reverse, and an ease-OUT is the wrong shape for it: on quart the
+   backdrop was 64% faded one frame in, over a 4% scale, so it read as a cut. Ease-in-out keeps the card
+   on screen long enough to see it leave, then takes it away. */
+.modal__backdrop[data-exiting],
+.modal__container[data-exiting] {
+  animation-duration: 240ms !important;
+  animation-timing-function: cubic-bezier(0.45, 0, 0.55, 1) !important;
+}
+.modal__container[data-exiting] {
+  --tw-exit-scale: 0.92;
+  --tw-exit-translate-y: 16px;
+}
+.modal__backdrop--blur {
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+}
+
+/* Privy login modal: theme/accentColor only set the base + accent, so Privy's derived neutral ramp
+   (close button, selected row, input borders) keeps its default blue tint. Force those tokens onto
+   the PIPS black/grey palette; amber accent still comes from appearance.accentColor. */
+#privy-dialog,
+#privy-modal-content {
+  --privy-color-background: #0f0f0f !important;
+  --privy-color-background-2: var(--color-surface) !important;
+  --privy-color-background-3: var(--color-surface-2) !important;
+  --privy-color-background-hover: #1a1a1a !important;
+  --privy-color-background-clicked: #202020 !important;
+  --privy-color-background-interactive: #161616 !important;
+  --privy-color-background-interactive-hover: var(--color-surface) !important;
+  --privy-color-background-interactive-clicked: var(--color-surface-2) !important;
+  --privy-color-border-default: var(--color-line) !important;
+  --privy-color-border-hover: var(--color-line-strong) !important;
+  --privy-color-border-interactive: var(--color-line) !important;
+  --privy-color-border-interactive-hover: var(--color-line-strong) !important;
+}
+
+/* ── Fault screens (404 + crash), the dead-device trace ─────────────────────
+   The trace draws itself in once (pathLength=1 normalizes so offset animates
+   1->0). No looping flicker, a single clean reveal. */
+.fault-draw {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: fault-draw 1.15s var(--ease-out-expo) forwards;
+}
+@keyframes fault-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fault-draw {
+    stroke-dashoffset: 0;
+    animation: none;
+  }
+}

@@ -1,0 +1,14 @@
+packages:
+  - 'packages/*'
+  - 'apps/*'
+allowBuilds:
+  '@swc/core': true
+  esbuild: true
+  protobufjs: true
+minimumReleaseAgeExclude:
+  - '@paystreamer/*'
+  - '@paystreamer/sdk@0.1.0'
+  - '@paystreamer/sdk@0.1.1'
+  - '@paystreamer/sdk@0.2.0'
+overrides:
+  '@headlessui/react': '^2.2.0'

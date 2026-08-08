@@ -1,0 +1,17 @@
+[package]
+name = "snark-to-sui"
+version = "0.1.0"
+edition = "2021"
+
+# Converts snarkjs Groth16 artifacts (verification_key.json, proof.json,
+# public.json) into the exact BN254 byte format Sui's `sui::groth16` native
+# expects. Uses ark-groth16's own VerifyingKey/Proof CanonicalSerialize, which
+# is byte-identical to the fastcrypto deserializer Sui uses.
+
+[dependencies]
+ark-bn254 = "0.4"
+ark-ec = "0.4"
+ark-ff = "0.4"
+ark-groth16 = "0.4"
+ark-serialize = "0.4"
+serde_json = "1"

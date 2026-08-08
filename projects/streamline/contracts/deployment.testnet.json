@@ -1,0 +1,21 @@
+{
+  "network": "testnet",
+  "package_id": "0x9e9be0f65ce3c45092b25553f6eabc4520bd57bb2f29dacdeb770c3e8e2de3e1",
+  "original_package_id": "0x9d6e7815d5e11424a68f827e26499078fead7648328f44fdbdeff6d34ed0b3a8",
+  "upgrade_cap": "0x351ff70fa0639fb0c1bf61bbb5402314c4b2d853f22e7274adbec4dba7f5447e",
+  "upgrade_digest": "9GgV5kVbMEHubJHPeadvXAPdaQyrzGs53niA4FRDWVnt",
+  "version": 13,
+  "modules": [
+    "stream",
+    "collateral",
+    "confidential_balance",
+    "yield_vault",
+    "treasury",
+    "lazy_stream",
+    "merkle_tree",
+    "shielded_pool"
+  ],
+  "yield_vault_id": "0x8ae9d8805682aabbd00ff0582d93b88f2f86482bcabed194a88a6ded99a88406",
+  "published_at": "2026-06-08",
+  "upgraded_at": "2026-07-18"
+}

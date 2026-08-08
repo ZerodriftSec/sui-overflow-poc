@@ -1,0 +1,29 @@
+---
+title: Milestones
+description: Gates that unlock streaming after the client approves completed work.
+icon: Flag
+---
+
+# Milestones
+
+Streams are split into named milestones with fixed USDC amounts. Work is gated:
+
+1. Freelancer finishes a chunk of work and calls **raise completion**.
+2. Stream enters `pending_review`.
+3. Client **approves** (or the keeper **auto-approves** after the dispute window, default 48h).
+4. Stream enters `dripping` for that slice until the next gate or completion.
+
+## Amounts
+
+Milestone amounts are integer **base units** (USDC has 6 decimals). They must sum to the total locked amount. The SDK and app helpers split evenly when you only pass a total.
+
+```ts
+milestones: [
+  { name: "Design", amountUsdc: 40 },
+  { name: "Delivery", amountUsdc: 60 },
+]
+```
+
+## Dispute window
+
+`disputeWindowMs` controls how long a raised milestone waits before auto-approve. Default: **48 hours**.

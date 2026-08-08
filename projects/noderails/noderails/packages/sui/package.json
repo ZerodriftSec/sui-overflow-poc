@@ -1,0 +1,28 @@
+{
+  "name": "@noderails/sui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Sui Move PTB helpers for NodeRails escrow and merchant manager",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@mysten/sui": "^1.21.1",
+    "@noble/hashes": "^1.8.0",
+    "@noderails/mtxm-client": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.4.0"
+  }
+}

@@ -1,0 +1,39 @@
+---
+title: Handles
+description: Human-readable SuiNS subnames under streamline.sui.
+icon: AtSign
+---
+
+# Handles
+
+StreamLine identities display as **`alice@streamline`**. On-chain they are SuiNS names under the parent domain `streamline.sui` (configurable).
+
+| Form | Example |
+| --- | --- |
+| Display | `alice@streamline` |
+| Canonical SuiNS | `alice.streamline.sui` |
+| Hex | `0x7a3f…` |
+
+## Resolution
+
+Both the app and `@streamline/sdk` accept:
+
+- Hex addresses (`0x` + 64 hex chars)
+- Bare labels (`alice`)
+- Brand form (`alice@streamline`)
+- Full SuiNS (`alice.streamline.sui` or any `.sui` name)
+
+```ts
+const recipient = await sl.resolve("alice@streamline");
+// { address, displayName, handle }
+```
+
+## Claiming
+
+Users claim subnames in the **app** via Enoki Identity Subnames (JWT / portal). Claim is intentionally **not** in SDK v1 — agents should pay to an already-resolved address or handle.
+
+## Username rules
+
+- 3–20 characters
+- `a-z`, `0-9`, hyphen (no leading/trailing hyphen)
+- Reserved words blocked (`admin`, `api`, `wallet`, …)

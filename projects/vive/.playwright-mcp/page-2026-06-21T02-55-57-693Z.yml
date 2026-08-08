@@ -1,0 +1,178 @@
+- generic [ref=e3]:
+    - navigation [ref=e4]:
+        - generic [ref=e5]:
+            - link "Vive" [ref=e6] [cursor=pointer]:
+                - /url: "#"
+                - generic [ref=e7]:
+                    - img [ref=e8]
+                    - generic [ref=e9]: Vive
+            - generic [ref=e10]:
+                - link "Pipeline" [ref=e11] [cursor=pointer]:
+                    - /url: "#pipeline"
+                - link "Features" [ref=e12] [cursor=pointer]:
+                    - /url: "#features"
+                - link "How it works" [ref=e13] [cursor=pointer]:
+                    - /url: "#how-it-works"
+            - button "Open Studio" [ref=e17] [cursor=pointer]:
+                - generic [ref=e18]:
+                    - img [ref=e19]
+                    - text: Open Studio
+    - generic [ref=e22]:
+        - generic [ref=e26]:
+            - generic [ref=e27]:
+                - img [ref=e28]
+                - generic [ref=e31]:
+                    Sui Overflow 2026 · Agentic Video Production
+            - heading "Cursor for short-form video" [level=1] [ref=e32]:
+                - text: Cursor for
+                - text: short-form video
+            - paragraph [ref=e33]:
+                Phase-gated agents plan, generate, and revise every shot. Your
+                models, your Walrus library, your brand voice — remembered
+                across every project.
+            - generic [ref=e34]:
+                - generic [ref=e36]:
+                    - textbox "A 30-second Reel about Sui's parallel execution —
+                      fast cuts, bold typography, end on a product demo"
+                      [ref=e37]
+                    - generic [ref=e38]:
+                        - generic [ref=e39]:
+                            Script → Storyboard → Visuals → Film → Package
+                        - ? button "Create with Wallet" [ref=e43]
+                            [cursor=pointer]
+                          : - generic [ref=e44]:
+                                - img [ref=e45]
+                                - text: Create with Wallet
+                - button "Try another example prompt →" [ref=e48]
+            - generic [ref=e49]:
+                - ? button "Connect Sui Wallet to Start" [ref=e53]
+                    [cursor=pointer]
+                  : - generic [ref=e54]:
+                        - img [ref=e55]
+                        - text: Connect Sui Wallet to Start
+                - link "See how the pipeline works" [ref=e58] [cursor=pointer]:
+                    - /url: "#pipeline"
+        - generic [ref=e60]: Scroll
+    - generic [ref=e63]:
+        - generic [ref=e64]:
+            - paragraph [ref=e65]: Production Pipeline
+            - heading "Five phases. Full control." [level=2] [ref=e66]
+            - paragraph [ref=e67]:
+                Every artifact is versioned and searchable. Advance only when
+                you approve — agents work inside each phase, not around your
+                intent.
+        - generic [ref=e70]:
+            - generic [ref=e71]:
+                - generic [ref=e72]:
+                    - img [ref=e74]
+                    - generic [ref=e77]: "01"
+                - heading "Script" [level=3] [ref=e78]
+                - paragraph [ref=e79]:
+                    Beat sheet, hooks, and narration — revised shot by shot
+            - generic [ref=e80]:
+                - generic [ref=e81]:
+                    - img [ref=e83]
+                    - generic [ref=e87]: "02"
+                - heading "Storyboard" [level=3] [ref=e88]
+                - paragraph [ref=e89]:
+                    Frame-by-frame visual plan with approval gates
+            - generic [ref=e90]:
+                - generic [ref=e91]:
+                    - img [ref=e93]
+                    - generic [ref=e98]: "03"
+                - heading "Visuals" [level=3] [ref=e99]
+                - paragraph [ref=e100]:
+                    Generate and refine stills per shot before filming
+            - generic [ref=e101]:
+                - generic [ref=e102]:
+                    - img [ref=e104]
+                    - generic [ref=e106]: "04"
+                - heading "Film" [level=3] [ref=e107]
+                - paragraph [ref=e108]:
+                    Assemble clips, pacing, and transitions on the timeline
+            - generic [ref=e109]:
+                - generic [ref=e110]:
+                    - img [ref=e112]
+                    - generic [ref=e116]: "05"
+                - heading "Package" [level=3] [ref=e117]
+                - paragraph [ref=e118]:
+                    Export-ready deliverables stored on your Walrus library
+    - generic [ref=e120]:
+        - generic [ref=e121]:
+            - paragraph [ref=e122]: Built for creators
+            - heading "Professional control. AI speed." [level=2] [ref=e123]
+        - generic [ref=e124]:
+            - generic [ref=e125]:
+                - img [ref=e127]
+                - heading "Controllable" [level=3] [ref=e129]
+                - paragraph [ref=e130]: Approval gates at every phase
+                - list [ref=e131]:
+                    - listitem [ref=e132]:
+                        - generic [ref=e133]: ·
+                        - text:
+                            Edit any field directly or ask an agent to revise a
+                            single item
+                    - listitem [ref=e134]:
+                        - generic [ref=e135]: ·
+                        - text:
+                            Skills and playbooks are visible — not hidden system
+                            prompts
+                    - listitem [ref=e136]:
+                        - generic [ref=e137]: ·
+                        - text:
+                            Draft, approved, and stale states on every artifact
+            - generic [ref=e138]:
+                - img [ref=e140]
+                - heading "Agentic" [level=3] [ref=e143]
+                - paragraph [ref=e144]: Multi-LLM loops within phases
+                - list [ref=e145]:
+                    - listitem [ref=e146]:
+                        - generic [ref=e147]: ·
+                        - text:
+                            Agents plan, execute, critique, and revise
+                            autonomously
+                    - listitem [ref=e148]:
+                        - generic [ref=e149]: ·
+                        - text:
+                            Pick any OpenRouter model per iteration — 300+
+                            models
+                    - listitem [ref=e150]:
+                        - generic [ref=e151]: ·
+                        - text:
+                            Client-side search across project manifests and
+                            assets
+            - generic [ref=e152]:
+                - img [ref=e154]
+                - heading "User-owned" [level=3] [ref=e157]
+                - paragraph [ref=e158]: Seal-encrypted Walrus storage
+                - list [ref=e159]:
+                    - listitem [ref=e160]:
+                        - generic [ref=e161]: ·
+                        - text:
+                            All artifacts stored on Walrus with wallet-signed
+                            Seal sessions
+                    - listitem [ref=e162]:
+                        - generic [ref=e163]: ·
+                        - text:
+                            Path-index discovery with on-chain vault registry
+                    - listitem [ref=e164]:
+                        - generic [ref=e165]: ·
+                        - text: Your Sui wallet controls access via vault policy
+        - generic [ref=e166]:
+            - heading "Ready to produce?" [level=3] [ref=e167]
+            - paragraph [ref=e168]:
+                Connect your Sui wallet to open the studio. Your projects,
+                models, and brand memory — all in one Resolve-style workspace.
+            - button "Connect Sui Wallet" [ref=e173] [cursor=pointer]:
+                - generic [ref=e174]:
+                    - img [ref=e175]
+                    - text: Connect Sui Wallet
+    - contentinfo [ref=e178]:
+        - generic [ref=e179]:
+            - generic [ref=e180]:
+                - img [ref=e181]
+                - generic [ref=e182]: Vive
+            - paragraph [ref=e183]:
+                - text: Sui Overflow 2026 · Powered by
+                - link "Walrus Memory" [ref=e184] [cursor=pointer]:
+                    - /url: https://docs.wal.app/walrus-memory

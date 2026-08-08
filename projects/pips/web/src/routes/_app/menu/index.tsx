@@ -1,0 +1,475 @@
+import { Link, createFileRoute, useNavigate, useRouter } from '@tanstack/react-router'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Gauge, LogOut, Pencil } from 'lucide-react'
+import { useEffect, type ReactNode } from 'react'
+import type { DisplayAchievement } from '@/lib/achievements'
+import { MenuHeader, prepareMenuTransition } from '@/components/menu/shared'
+import { BalanceCard } from '@/components/menu/BalanceCard'
+import {
+  cardPressClass,
+  openFromCard,
+  useAchievementDetail,
+} from '@/components/menu/AchievementDetail'
+import { useMenuDrawer } from '@/components/console/MenuDrawer'
+import { useTour } from '@/components/console/tour'
+import { StatsCard, StatsCardSkeleton } from '@/components/menu/StatsCard'
+import { Avatar } from '@/components/Avatar'
+import { SocialFooter } from '@/components/SocialFooter'
+import { Hw3DButton } from '@/ui/Hardware3D'
+import { Illo } from '@/ui/Illo'
+import { achievementImage, mergeCatalog } from '@/lib/achievements'
+import {
+  achievementsQuery,
+  leaderboardQuery,
+  prefetchMenuData,
+  prefetchRoutes,
+  statsQuery,
+} from '@/lib/menuQueries'
+import { useAuth } from '@/lib/auth'
+import { haptic } from '@/lib/haptics'
+import { HapticOverlay } from '@/components/HapticOverlay'
+import { displayHandle } from '@/utils/format'
+import { cnm } from '@/utils/style'
+
+// The menu home, rendered inside the bottom drawer: the trader card (pen opens the handle editor) up top,
+// then the balance hero, a 3x2 nav tile grid, the achievements rail, and Log out.
+export const Route = createFileRoute('/_app/menu/')({ component: MenuHome })
+
+function MenuHome() {
+  const { signOut } = useAuth()
+  const qc = useQueryClient()
+  const router = useRouter()
+
+  // Warm every sub-screen's data AND its chunk the moment the hub is visible, so the first tap in lands
+  // on cache instead of a cold fetch. The drawer rise is compositor-animated, so this never janks the open.
+  useEffect(() => {
+    prefetchMenuData(qc)
+    prefetchRoutes(router)
+  }, [qc, router])
+
+  return (
+    <div className="relative min-h-full bg-black px-4 pb-8">
+      <MenuHeader title="Menu" showBack={false} />
+      <div className="relative z-0 -mt-1 flex flex-col gap-6 pt-5">
+        <StatsSection />
+        <img
+          src="/proud-badge.webp"
+          alt="We think this is something Sui would be proud to have in the ecosystem."
+          className="-my-3 w-full select-none"
+          draggable={false}
+        />
+        <BalanceCard />
+        <NavGrid />
+        <AchievementsSection />
+        <div className="flex flex-col gap-1.5">
+          <HowItWorksRow />
+          <AboutRow />
+          <AdminRow />
+        </div>
+        <div className="mt-16 w-full">
+          <Hw3DButton variant="danger" wide icon={LogOut} haptic="rigid" onPress={signOut}>
+            Log out
+          </Hw3DButton>
+        </div>
+        <MenuFooter />
+      </div>
+    </div>
+  )
+}
+
+// The drawer's foot: same compact one-row cluster as the landing door (X + DeepBook credit on one
+// line, the no-token warning beneath).
+function MenuFooter() {
+  return <SocialFooter dense large className="mt-2 border-t border-line pt-7" />
+}
+
+// Replays the first-run console tour: close the drawer back to the device, then start the tour a beat
+// later so the spotlight lands on a fully-revealed console, not the sliding drawer.
+function HowItWorksRow() {
+  const { start } = useTour()
+  const drawer = useMenuDrawer()
+  const run = () => {
+    haptic('selection')
+    drawer?.closeTo('/games')
+    start({ force: true, delayMs: 460 })
+  }
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        className="pointer-events-none surface-skeuo flex w-full items-center gap-3 rounded-card p-4 text-left transition-transform active:scale-[0.99]"
+      >
+        <img
+          src="/assets/icons/icon-howitworks.webp"
+          alt=""
+          className="h-12 w-12 shrink-0 object-contain"
+          draggable={false}
+        />
+        <span className="flex-1 text-[17px] font-bold">How it works</span>
+        <span className="text-2xl text-text-3">›</span>
+      </button>
+      <HapticOverlay className="absolute inset-0 rounded-card" preset="selection" silent onTap={run} />
+    </div>
+  )
+}
+
+// About PIPS: credits + links on its own menu sub-page, pushed in with the drawer transition.
+function AboutRow() {
+  const navigate = useNavigate()
+  const go = () => {
+    prepareMenuTransition('forward')
+    void navigate({ to: '/menu/about' })
+  }
+  return (
+    <div className="relative">
+      <Link
+        to="/menu/about"
+        onClick={() => {
+          prepareMenuTransition('forward')
+          haptic('selection')
+        }}
+        className="pointer-events-none surface-skeuo flex w-full items-center gap-3 rounded-card p-4 text-left transition-transform active:scale-[0.99]"
+      >
+        <img
+          src="/assets/icons/icon-about.webp"
+          alt=""
+          className="h-12 w-12 shrink-0 object-contain"
+          draggable={false}
+        />
+        <span className="flex-1 text-[17px] font-bold">About PIPS</span>
+        <span className="text-2xl text-text-3">›</span>
+      </Link>
+      <HapticOverlay className="absolute inset-0 rounded-card" preset="selection" silent onTap={go} />
+    </div>
+  )
+}
+
+// ADMIN only, and never prefetched (it stays out of MENU_ROUTES), so a normal user never sees the row and
+// never downloads the chunk. /admin lives outside _app, so this navigation tears the 3D console down.
+function AdminRow() {
+  const { user } = useAuth()
+  const navigate = useNavigate()
+  if (!user?.specialRoles?.includes('ADMIN')) return null
+
+  const go = () => void navigate({ to: '/admin' })
+  return (
+    <div className="relative">
+      <Link
+        to="/admin"
+        onClick={() => haptic('selection')}
+        className="pointer-events-none surface-skeuo flex w-full items-center gap-3 rounded-card p-4 text-left transition-transform active:scale-[0.99]"
+      >
+        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/5 text-2xl">
+          <Gauge className="h-6 w-6 text-text-2" strokeWidth={2} />
+        </span>
+        <span className="flex-1 text-[17px] font-bold">Admin dashboard</span>
+        <span className="text-2xl text-text-3">›</span>
+      </Link>
+      <HapticOverlay className="absolute inset-0 rounded-card" preset="selection" silent onTap={go} />
+    </div>
+  )
+}
+
+// Warm a route's JS chunk on finger-down so the tap doesn't wait on a cold module fetch. The tiles
+// navigate through the HapticOverlay switch (the Link is pointer-events-none), so the router never sees
+// hover intent, this restores that head start. Idempotent and best-effort; a miss just loads on navigate.
+function usePreload() {
+  const router = useRouter()
+  return (to: string) => void router.preloadRoute({ to }).catch(() => {})
+}
+
+function StatsSection() {
+  const { user } = useAuth()
+  const navigate = useNavigate()
+  const q = useQuery(statsQuery())
+  // Shares the Leaderboard screen's cache; feeds the card's "#4 TOP REKT" rank chip.
+  const lbq = useQuery(leaderboardQuery())
+  const stats = q.data?.stats
+  const rank = lbq.data?.leaderboard.global.you ?? null
+
+  // The pen opens the handle editor: a plain menu sub-page with an input, pushed in with the drawer
+  // transition (same as History / Settings).
+  const editHandle = () => {
+    prepareMenuTransition('forward')
+    haptic('selection')
+    void navigate({ to: '/menu/username' })
+  }
+
+  // Share opens the share screen (preview + what-to-show controls), pushed like any other menu sub-page.
+  const openShare = () => {
+    prepareMenuTransition('forward')
+    haptic('medium')
+    void navigate({ to: '/menu/share' })
+  }
+
+  if (q.isLoading) return <StatsCardSkeleton />
+  if (!stats || stats.gamesPlayed === 0) {
+    // No card yet (no plays). Keep the first-play nudge; the handle sits next to a pen to change it.
+    return (
+      <div className="surface-skeuo flex items-center gap-3 rounded-card p-4">
+        <Avatar name={displayHandle(user)} src={user?.avatarUrl} size={48} className="ring-1 ring-white/10" />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <span className="truncate text-[15px] font-bold">{displayHandle(user)}</span>
+            <div className="relative h-[1.375rem] w-[1.375rem] shrink-0">
+              <button
+                type="button"
+                onClick={editHandle}
+                aria-label="Change your handle"
+                className="pointer-events-none flex h-full w-full items-center justify-center text-text-3 transition active:scale-90"
+              >
+                <Pencil className="h-3.5 w-3.5" strokeWidth={2.4} />
+              </button>
+              <HapticOverlay className="absolute inset-0" preset="selection" silent onTap={editHandle} />
+            </div>
+          </div>
+          <div className="text-sm text-text-3">No plays yet. Make your first play.</div>
+        </div>
+        <Hw3DButton size="sm" variant="primary" haptic="medium" onPress={() => void navigate({ to: '/games' })}>
+          Play
+        </Hw3DButton>
+      </div>
+    )
+  }
+
+  return (
+    <StatsCard
+      stats={stats}
+      displayName={displayHandle(user)}
+      avatarUrl={user?.avatarUrl}
+      twitter={user?.twitter}
+      rank={rank}
+      onEdit={editHandle}
+      onShare={openShare}
+    />
+  )
+}
+
+// Every destination as a compact 3x2 tile grid: the six stacked rows folded into two rows so the
+// whole menu reads without scrolling. A big icon over a one-line label, no subtitle at this size.
+function NavGrid() {
+  return (
+    <div className="grid grid-cols-3 gap-3">
+      {/* Row 1: your play world (your plays, your rank, your crew). */}
+      <NavTile to="/menu/history" icon="/assets/icons/icon-history.webp" label="History" />
+      <NavTile to="/menu/leaderboard" icon="/assets/icons/leaderboard-icon.webp" label="Leaderboard" />
+      <NavTile to="/menu/referrals" icon="/assets/icons/icon-referrals.webp" label="Referrals" />
+      {/* Row 2: make it yours + manage (skin, preferences, account). */}
+      <NavTile to="/menu/customize" icon="/assets/icons/icon-customize.webp" label="Customize" launch />
+      <NavTile to="/menu/settings" icon="/assets/icons/icon-settings.webp" label="Settings" />
+      <NavTile to="/menu/account" icon="/assets/icons/icon-account-settings.webp" label="Account" />
+    </div>
+  )
+}
+
+function NavTile({
+  to,
+  icon,
+  illo,
+  label,
+  launch = false,
+}: {
+  to: string
+  icon?: string // png icon slot (the existing art)
+  illo?: string // or an Illo name (e.g. Account's vault), for tiles without a dedicated png
+  label: string
+  // `launch` tiles hand off to a full takeover (the Customize studio): the drawer slides itself
+  // away first, then routes, so it never just pops out from under the studio.
+  launch?: boolean
+}): ReactNode {
+  const drawer = useMenuDrawer()
+  const navigate = useNavigate()
+  const preload = usePreload()
+  const activate = () => {
+    if (launch && drawer) {
+      drawer.closeTo(to)
+      return
+    }
+    prepareMenuTransition('forward')
+    haptic('selection')
+    void navigate({ to })
+  }
+  return (
+    <div className="relative" onPointerDownCapture={() => preload(to)}>
+      <Link
+        to={to}
+        onClick={(e) => {
+          if (launch && drawer) {
+            e.preventDefault()
+            drawer.closeTo(to)
+            return
+          }
+          prepareMenuTransition('forward')
+          haptic('selection')
+        }}
+        className="pointer-events-none surface-skeuo flex flex-col items-center justify-center gap-1.5 rounded-card px-1 pb-2.5 pt-2 transition-transform active:scale-[0.97]"
+      >
+        {illo ? (
+          <Illo name={illo} size={68} />
+        ) : (
+          <img src={icon} alt="" className="h-[74px] w-[74px] object-contain" draggable={false} />
+        )}
+        <span className="mt-1 text-base font-bold leading-none">{label}</span>
+      </Link>
+      <HapticOverlay className="absolute inset-0 rounded-card" preset="selection" silent onTap={activate} />
+    </div>
+  )
+}
+
+function AchievementsSection() {
+  const q = useQuery(achievementsQuery())
+
+  if (q.isLoading) {
+    return (
+      <section className="flex flex-col gap-3">
+        <SectionLabel />
+        <div className="-mx-4 flex gap-3 overflow-hidden px-4">
+          {[0, 1, 2].map((i) => (
+            <div
+              key={i}
+              className="shimmer h-[208px] w-[160px] shrink-0 rounded-card"
+            />
+          ))}
+        </div>
+      </section>
+    )
+  }
+
+  const all = mergeCatalog(q.data?.achievements ?? [])
+  // The closest in-progress badge leads (most motivating), earned badges follow.
+  const inProgress = all
+    .filter((a) => !a.unlocked && a.progress && a.progress.target > 0)
+    .sort((a, b) => pct(b) - pct(a))
+  const unlocked = all.filter((a) => a.unlocked)
+  const rail = [...inProgress, ...unlocked]
+
+  return (
+    <section className="flex flex-col gap-3">
+      <SectionLabel />
+      <div className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {rail.map((a) => (
+          <AchievementCard key={a.slug} a={a} />
+        ))}
+      </div>
+      <AllAchievementsRow />
+    </section>
+  )
+}
+
+function AllAchievementsRow() {
+  const navigate = useNavigate()
+  return (
+    <div className="relative">
+      <Link
+        to="/menu/achievements"
+        onClick={() => {
+          prepareMenuTransition('forward')
+          haptic('selection')
+        }}
+        className="pointer-events-none block"
+      >
+        <div className="surface-skeuo flex items-center justify-between rounded-card p-4 transition-transform active:scale-[0.99]">
+          <span className="text-[15px] font-bold">All Achievements</span>
+          <span className="text-lg text-text-3">›</span>
+        </div>
+      </Link>
+      <HapticOverlay
+        className="absolute inset-0 rounded-card"
+        preset="selection"
+        silent
+        onTap={() => {
+          prepareMenuTransition('forward')
+          void navigate({ to: '/menu/achievements' })
+        }}
+      />
+    </div>
+  )
+}
+
+function SectionLabel() {
+  return (
+    <div className="px-1 text-[11px] font-bold uppercase tracking-[0.12em] text-text-3">
+      Achievements
+    </div>
+  )
+}
+
+const pct = (a: DisplayAchievement): number =>
+  a.progress && a.progress.target > 0
+    ? Math.min(1, a.progress.current / a.progress.target)
+    : 0
+
+function AchievementCard({ a }: { a: DisplayAchievement }): ReactNode {
+  const p = pct(a)
+  const { open } = useAchievementDetail()
+  return (
+    <button
+      type="button"
+      aria-label={`${a.name}, ${a.unlocked ? 'unlocked' : `${Math.round(p * 100)}% complete`}`}
+      onClick={(e) => openFromCard(open, a, e)}
+      className={cnm(
+        'surface-skeuo flex w-[160px] shrink-0 flex-col gap-3 rounded-card p-4 text-left',
+        cardPressClass,
+      )}
+    >
+      <div className="relative mx-auto flex h-[116px] w-[116px] items-center justify-center">
+        {a.unlocked ? (
+          <img
+            src={achievementImage(a.slug)}
+            alt=""
+            className="h-[104px] w-[104px] object-contain drop-shadow-[0_12px_20px_rgba(0,0,0,0.34)]"
+            draggable={false}
+          />
+        ) : (
+          <>
+            {/* Locked badge as a black silhouette, with the progress ring + percent on top. */}
+            <img
+              src={achievementImage(a.slug)}
+              alt=""
+              className="absolute h-[80px] w-[80px] object-contain brightness-0 contrast-200 drop-shadow-[0_1px_0_rgba(255,255,255,0.04)]"
+              draggable={false}
+            />
+            <ProgressRing value={p} />
+            <span className="tnum absolute text-[26px] font-extrabold leading-none">
+              {Math.round(p * 100)}%
+            </span>
+          </>
+        )}
+      </div>
+      <div>
+        <div className="text-[15px] font-bold leading-tight">{a.name}</div>
+        <div className="mt-1 line-clamp-2 text-[13px] leading-snug text-text-2">
+          {a.description}
+        </div>
+      </div>
+    </button>
+  )
+}
+
+function ProgressRing({ value }: { value: number }) {
+  const r = 50
+  const c = 2 * Math.PI * r
+  return (
+    <svg viewBox="0 0 120 120" className="h-full w-full -rotate-90">
+      <circle
+        cx={60}
+        cy={60}
+        r={r}
+        fill="none"
+        stroke="rgba(255,255,255,0.10)"
+        strokeWidth={10}
+      />
+      <circle
+        cx={60}
+        cy={60}
+        r={r}
+        fill="none"
+        style={{ stroke: 'var(--color-brand-500)' }}
+        strokeWidth={10}
+        strokeLinecap="round"
+        strokeDasharray={c}
+        strokeDashoffset={c * (1 - value)}
+      />
+    </svg>
+  )
+}

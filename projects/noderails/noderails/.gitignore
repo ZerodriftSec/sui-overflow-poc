@@ -1,0 +1,85 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+.next/
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE / AI
+.vscode/
+.idea/
+.cursor/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Testing
+coverage/
+.nyc_output/
+test-ledger/
+
+# Turbo
+.turbo/
+
+# Prisma
+packages/database/prisma/*.db
+packages/database/prisma/*.db-journal
+packages/database/src/generated/
+
+# Foundry
+noderails-contracts/out/
+noderails-contracts/cache/
+
+# Ignores development broadcast logs
+!/broadcast
+/broadcast/*/31337/
+/broadcast/**/dry-run/
+
+# Certificates / secrets
+*.pem
+*.key
+*.cert
+*.p12
+
+# Solana keypair files (local secrets — configs in solana/noderails/ are safe to commit)
+solana/noderails/*-wallet.json
+solana/noderails/*-keypair.json
+solana/noderails/mainnet-first-admin.json
+
+# Anchor / Rust workspace (noderails-solana) — build output & local validator
+# See also noderails-solana/.gitignore
+noderails-solana/target/
+noderails-solana/.anchor/
+noderails-solana/test-ledger/
+
+# TypeScript Solana helpers — built artifacts (repo-wide dist/ also applies)
+packages/solana/dist/
+packages/solana/.turbo/
+packages/solana/*.tsbuildinfo
+
+# Docs (generated)
+/docs/
+mezo-addition-docs/
+chainlink-hackathon
+.env.prod
+
+# Wallet connect research lab (local experiments)
+research/
