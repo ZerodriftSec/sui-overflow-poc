@@ -1,0 +1,48 @@
+
+services:
+  postgres:
+    image: postgres:14
+    container_name: paystreamer-postgres
+    environment:
+      POSTGRES_DB: sui
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      timeout: 5s
+      retries: 5
+
+  sui-node:
+    image: mysten/sui-tools:mainnet
+    container_name: paystreamer-localnet
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "9000:9000"
+      - "9123:9123"
+      - "8000:8000"
+    volumes:
+      - ./:/workspace
+    working_dir: /workspace
+    entrypoint: ["sui"]
+    command: ["start", "--with-faucet=0.0.0.0:9123", "--with-indexer=postgres://postgres:password@postgres:5432/sui", "--with-graphql=0.0.0.0:8000"]
+
+  caddy:
+    image: caddy:alpine
+    container_name: paystreamer-proxy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  caddy_data:
+  caddy_config:

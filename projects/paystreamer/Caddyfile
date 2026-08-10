@@ -1,0 +1,15 @@
+http://paystreamer.localhost {
+    reverse_proxy host.docker.internal:5176
+}
+
+http://app.paystreamer.localhost {
+    reverse_proxy host.docker.internal:5177
+}
+
+http://checkout.paystreamer.localhost {
+    reverse_proxy host.docker.internal:5178
+}
+
+http://docs.paystreamer.localhost {
+    reverse_proxy host.docker.internal:3001
+}

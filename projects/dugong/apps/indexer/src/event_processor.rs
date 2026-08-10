@@ -1,0 +1,196 @@
+use anyhow::{Context, Result};
+use sqlx::PgPool;
+use tracing::{debug, warn};
+
+use super::handlers::EventHandler;
+use super::types::{parse_event_type, SuiEvent};
+
+pub struct EventProcessor {
+    pool: PgPool,
+}
+
+impl EventProcessor {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+
+    /// Process a batch of events
+    pub async fn process_events(&self, events: &[SuiEvent]) -> Result<usize> {
+        let mut processed = 0;
+
+        for event in events {
+            match self.process_single_event(event).await {
+                Ok(_) => {
+                    processed += 1;
+                }
+                Err(e) => {
+                    warn!("Failed to process event {}: {}", event.id.tx_digest, e);
+                    // Continue processing other events
+                }
+            }
+        }
+
+        Ok(processed)
+    }
+
+    /// Process a single event
+    async fn process_single_event(&self, event: &SuiEvent) -> Result<()> {
+        let event_type =
+            parse_event_type(&event.event_type).context("Failed to parse event type")?;
+
+        // Idempotency guard: balance handlers apply increment-style updates,
+        // so an event re-fetched after a crash-before-cursor-save (or during
+        // cursor re-anchoring edge cases) must not be applied twice.
+        if self.already_processed(event).await? {
+            debug!(
+                "Skipping already-processed event {} seq {}",
+                event.id.tx_digest, event.id.event_seq
+            );
+            return Ok(());
+        }
+
+        debug!("Processing event: {} ({})", event_type, event.id.tx_digest);
+
+        // Route to appropriate handler based on event type
+        match event_type {
+            "AccountCreated" => {
+                self.handle_account_created(event).await?;
+            }
+            "WalletLinked" => {
+                self.handle_wallet_linked(event).await?;
+            }
+            "TransferCompleted" => {
+                self.handle_transfer_completed(event).await?;
+            }
+            "CoinDeposited" => {
+                self.handle_coin_deposited(event).await?;
+            }
+            "CoinWithdrawn" => {
+                self.handle_coin_withdrawn(event).await?;
+            }
+            "HandleUpdated" => {
+                self.handle_handle_updated(event).await?;
+            }
+            "MarketCreated" => {
+                self.handle_market_created(event).await?;
+            }
+            "BetPlaced" => {
+                self.handle_bet_placed(event).await?;
+            }
+            "MarketResolved" => {
+                self.handle_market_resolved(event).await?;
+            }
+            "MarketWinnerPaid" => {
+                self.handle_market_winner_paid(event).await?;
+            }
+            "RewardCampaignCreated" => {
+                self.handle_reward_campaign_created(event).await?;
+            }
+            "RewardCampaignResolved" => {
+                self.handle_reward_campaign_resolved(event).await?;
+            }
+            "RewardCampaignClaimed" => {
+                self.handle_reward_campaign_claimed(event).await?;
+            }
+            _ => {
+                warn!("Unknown event type: {}", event_type);
+            }
+        }
+
+        self.mark_processed(event).await?;
+
+        Ok(())
+    }
+
+    async fn already_processed(&self, event: &SuiEvent) -> Result<bool> {
+        let seen: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM indexer_processed_events WHERE tx_digest = $1 AND event_seq = $2)",
+        )
+        .bind(&event.id.tx_digest)
+        .bind(&event.id.event_seq)
+        .fetch_one(&self.pool)
+        .await
+        .context("Failed to check processed-events ledger")?;
+        Ok(seen)
+    }
+
+    /// Record the event in the ledger AFTER its handler succeeded. A crash in
+    /// the gap re-processes at most the current event, not the whole page.
+    async fn mark_processed(&self, event: &SuiEvent) -> Result<()> {
+        sqlx::query(
+            "INSERT INTO indexer_processed_events (tx_digest, event_seq) VALUES ($1, $2) \
+             ON CONFLICT (tx_digest, event_seq) DO NOTHING",
+        )
+        .bind(&event.id.tx_digest)
+        .bind(&event.id.event_seq)
+        .execute(&self.pool)
+        .await
+        .context("Failed to record event in processed-events ledger")?;
+        Ok(())
+    }
+
+    async fn handle_account_created(&self, event: &SuiEvent) -> Result<()> {
+        use super::handlers::account_created::AccountCreatedHandler;
+        AccountCreatedHandler::handle(&self.pool, event).await
+    }
+
+    async fn handle_wallet_linked(&self, event: &SuiEvent) -> Result<()> {
+        use super::handlers::wallet_linked::WalletLinkedHandler;
+        WalletLinkedHandler::handle(&self.pool, event).await
+    }
+
+    async fn handle_transfer_completed(&self, event: &SuiEvent) -> Result<()> {
+        use super::handlers::coin_transferred::TransferCompletedHandler;
+        TransferCompletedHandler::handle(&self.pool, event).await
+    }
+
+    async fn handle_coin_deposited(&self, event: &SuiEvent) -> Result<()> {
+        use super::handlers::coin_deposited::CoinDepositedHandler;
+        CoinDepositedHandler::handle(&self.pool, event).await
+    }
+
+    async fn handle_coin_withdrawn(&self, event: &SuiEvent) -> Result<()> {
+        use super::handlers::coin_withdrawn::CoinWithdrawnHandler;
+        CoinWithdrawnHandler::handle(&self.pool, event).await
+    }
+
+    async fn handle_handle_updated(&self, event: &SuiEvent) -> Result<()> {
+        use super::handlers::handle_updated::HandleUpdatedHandler;
+        HandleUpdatedHandler::handle(&self.pool, event).await
+    }
+
+    async fn handle_market_created(&self, event: &SuiEvent) -> Result<()> {
+        use super::handlers::market_created::MarketCreatedHandler;
+        MarketCreatedHandler::handle(&self.pool, event).await
+    }
+
+    async fn handle_bet_placed(&self, event: &SuiEvent) -> Result<()> {
+        use super::handlers::bet_placed::BetPlacedHandler;
+        BetPlacedHandler::handle(&self.pool, event).await
+    }
+
+    async fn handle_market_resolved(&self, event: &SuiEvent) -> Result<()> {
+        use super::handlers::market_resolved::MarketResolvedHandler;
+        MarketResolvedHandler::handle(&self.pool, event).await
+    }
+
+    async fn handle_market_winner_paid(&self, event: &SuiEvent) -> Result<()> {
+        use super::handlers::market_winner_paid::MarketWinnerPaidHandler;
+        MarketWinnerPaidHandler::handle(&self.pool, event).await
+    }
+
+    async fn handle_reward_campaign_created(&self, event: &SuiEvent) -> Result<()> {
+        use super::handlers::reward_campaign_created::RewardCampaignCreatedHandler;
+        RewardCampaignCreatedHandler::handle(&self.pool, event).await
+    }
+
+    async fn handle_reward_campaign_resolved(&self, event: &SuiEvent) -> Result<()> {
+        use super::handlers::reward_campaign_resolved::RewardCampaignResolvedHandler;
+        RewardCampaignResolvedHandler::handle(&self.pool, event).await
+    }
+
+    async fn handle_reward_campaign_claimed(&self, event: &SuiEvent) -> Result<()> {
+        use super::handlers::reward_campaign_claimed::RewardCampaignClaimedHandler;
+        RewardCampaignClaimedHandler::handle(&self.pool, event).await
+    }
+}

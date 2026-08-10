@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 320 320" fill="none">
+  <title>NodeRails Icon 512</title>
+  <defs>
+    <linearGradient id="nr-icon-bg" x1="24" y1="24" x2="296" y2="296" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#5B9BFF"/>
+      <stop offset="0.55" stop-color="#2F6FFF"/>
+      <stop offset="1" stop-color="#1F5AE6"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="24" y="24" width="272" height="272" rx="64" fill="url(#nr-icon-bg)"/>
+
+  <rect x="72" y="84" width="176" height="26" rx="13" fill="#FFFFFF" fill-opacity="0.38"/>
+  <rect x="72" y="146" width="176" height="26" rx="13" fill="#FFFFFF" fill-opacity="0.38"/>
+  <rect x="72" y="208" width="176" height="26" rx="13" fill="#FFFFFF" fill-opacity="0.38"/>
+
+  <circle cx="100" cy="97" r="7" fill="#FFFFFF"/>
+  <circle cx="156" cy="97" r="7" fill="#FFFFFF"/>
+  <circle cx="212" cy="97" r="7" fill="#FFFFFF"/>
+  <circle cx="100" cy="159" r="7" fill="#FFFFFF"/>
+  <circle cx="156" cy="159" r="7" fill="#FFFFFF"/>
+  <circle cx="212" cy="159" r="7" fill="#FFFFFF"/>
+  <circle cx="100" cy="221" r="7" fill="#FFFFFF"/>
+  <circle cx="156" cy="221" r="7" fill="#FFFFFF"/>
+  <circle cx="212" cy="221" r="7" fill="#FFFFFF"/>
+</svg>

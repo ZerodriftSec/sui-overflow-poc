@@ -1,0 +1,13 @@
+node_modules/
+# Heavy / regenerable proving artifacts (recursive)
+**/*.ptau
+**/*.zkey
+**/*.wtns
+**/*.r1cs
+**/*.sym
+**/*_js/
+build/**/*.wasm
+converter/target/
+converter/Cargo.lock
+# Move build output
+move/build/

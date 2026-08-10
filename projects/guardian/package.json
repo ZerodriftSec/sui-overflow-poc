@@ -1,0 +1,20 @@
+{
+  "name": "guardian",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "node --test test/risk.test.mjs test/keeper.test.mjs test/ai.test.mjs test/daemon.test.mjs",
+    "read": "node scripts/guardian.mjs read",
+    "keeper": "node scripts/keeper.mjs",
+    "backtest": "node scripts/backtest.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@mysten/deepbook-v3": "^1.4.1",
+    "@mysten/sui": "^2.17.0"
+  }
+}

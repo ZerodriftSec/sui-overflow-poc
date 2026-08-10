@@ -1,0 +1,52 @@
+name: Test Suite
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  security-and-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+      - name: Install dependencies
+        run: pnpm install
+      - name: Run Lint
+        run: pnpm lint:no-fakes
+
+  unit-tests:
+    runs-on: ubuntu-latest
+    env:
+      SKIP_LOCALNET: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+      - name: Install dependencies
+        run: pnpm install
+      - name: Test SDK
+        run: pnpm test:sdk
+      - name: Test Docs
+        run: pnpm test:docs
+      - name: Test Sponsor App
+        run: |
+          cd apps/sponsor
+          pnpm test

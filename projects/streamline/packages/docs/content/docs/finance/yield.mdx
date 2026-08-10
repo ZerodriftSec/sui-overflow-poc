@@ -1,0 +1,45 @@
+---
+title: Yield
+description: Compound income the moment it drips — vault deposits and auto-yield streams.
+icon: TrendingUp
+---
+
+# Yield
+
+Most “save what you earn” advice fails because it is a second step after payday. StreamLine collapses the steps: **a portion of every drip can land in a yield vault automatically**, so idle income starts compounding before the freelancer opens an app.
+
+## Two ways to earn yield
+
+### 1. Auto-yield on the stream
+
+`create_stream_v2` accepts `yieldBps` — basis points of each drip that the keeper routes through `drip_with_yield` into the vault. The rest pays out as cash to the freelancer.
+
+```
+drip (accrued)
+   ├─ (10_000 − yieldBps) / 10_000  →  cash to recipient
+   └─ yieldBps / 10_000            →  yield_vault::deposit → VaultReceipt
+```
+
+Configure once at create time (the phone app’s split UI maps to this). No monthly “transfer to savings” habit required.
+
+### 2. Manual vault deposit
+
+Anyone holding USDC can deposit into the shared `YieldVault`, receive a `VaultReceipt`, and redeem later for principal plus accrued interest. The vault uses a compounding index — Scallop-shaped on testnet (demo APR), ready to point at real money markets on mainnet.
+
+## Why it fits streaming
+
+| Traditional | StreamLine |
+| --- | --- |
+| Biweekly paycheck → manual transfer → savings | Every drip can split atomically into spend + vault |
+| Yield starts days later | Yield starts at settlement |
+| Separate apps | Same PTB, same object model |
+
+## In the product
+
+- **User app** — mark splits as yield when creating a stream; watch receipts grow.
+- **Keeper** — settles `drip_with_yield` when the gasless floor accrues.
+- **SDK** — `stream.to` defaults `yieldBps: 0`; pass a positive value to enable auto-yield from agents.
+
+## Trade-offs
+
+Auto-yield needs a **public** streamed amount path (the vault and keeper operate on clear balances). Confidential streams keep amounts private and therefore sit outside the auto-yield split today — privacy vs composability, chosen per stream.

@@ -1,0 +1,37 @@
+node_modules/
+.pnpm-store/
+dist/
+.next/
+.turbo/
+*.tsbuildinfo
+target/
+.anchor/
+
+# Secrets and deployment artifacts
+.env
+.env.*
+!.env.example
+**/Published.toml
+**/deploy.testnet.json
+**/deploy.mainnet.json
+**/deploy.devnet.json
+**/deployData/published.json
+
+# Sui Move build output
+**/packages/noderails_escrow/build/
+**/packages/noderails_merchant_manager/build/
+
+# Docs / IDE (keep local)
+README.md
+*.md
+.cursor/
+**/.cursor/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Local ledger / certs (never publish)
+test-ledger/
+ca.pem

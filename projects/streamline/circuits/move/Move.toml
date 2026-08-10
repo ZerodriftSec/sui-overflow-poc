@@ -1,0 +1,6 @@
+[package]
+name = "groth16_poc"
+edition = "2024.beta"
+
+[addresses]
+groth16_poc = "0x0"

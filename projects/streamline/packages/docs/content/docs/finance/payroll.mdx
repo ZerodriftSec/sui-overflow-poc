@@ -1,0 +1,57 @@
+---
+title: Payroll
+description: Continuous, milestone-aware pay for people and teams — StreamLine Pro.
+icon: Users
+---
+
+# Payroll
+
+Payroll is still stuck in batch thinking: semi-monthly ACH, wire delays, invoice float, and spreadsheets that pretend people earn in cliffs. Work is continuous. **Pay should be continuous.**
+
+StreamLine Pro turns the stream primitive into an operations surface for companies:
+
+- Fund a **treasury**
+- Spin up **streams per worker** (or contractor)
+- Let money drip as milestones clear — or as time elapses under policy
+- Optionally route yield, keep amounts confidential, or borrow against live cash flow
+
+## What “programmable payroll” means
+
+| Legacy payroll | StreamLine |
+| --- | --- |
+| Pay period batch | Per-second accrual, gasless settlement |
+| Trust the platform escrow | Move shared object is the escrow |
+| Hex addresses in HRIS exports | `name@streamline` handles |
+| Opaque fees and T+N settlement | Sponsored txs; finality on Sui |
+
+Milestones become **pay periods, delivery gates, or probation cliffs**. The same raise → approve → drip loop HR already understands — except the money moves while the work happens.
+
+## Pro workspace
+
+The Pro app is built for operators:
+
+1. **Onboard** the company (name / brand) and connect via zkLogin or wallet.
+2. **Treasury** — hold idle USDC, invest / divest against the yield vault, withdraw when needed.
+3. **Streams** — create worker streams from treasury or wallet balance; track state from the indexer.
+4. **Overview** — live picture of outgoing cash flow without opening a bank portal.
+
+Workers use the **User** app: raise completions, watch earnings tick, borrow or vault as their policy allows.
+
+## Handles at company scale
+
+Paying `design@acme` energy into `alice@streamline` removes the hex-error tax from payroll ops. Agents and finance scripts use the same resolve path via [`@streamline/sdk`](/docs/sdk).
+
+## Privacy for real employers
+
+Public chain payroll is a non-starter for most companies. Pair Pro streams with [confidential amounts](/docs/privacy/amounts) when compensation must stay between employer and worker — explorers see that settlement occurs; they do not get a public rate card.
+
+## Where this is going
+
+The same rail extends naturally to:
+
+- Contractor networks and agency benches
+- Grants and vesting with streaming unlocks
+- Subscriptions and retainers as inverted payroll
+- Cross-border teams that never touch correspondent banking for the last mile
+
+StreamLine does not replace your GL tomorrow. It replaces the **rail** that makes “we’ll pay you in two weeks” feel inevitable.

@@ -1,0 +1,29 @@
+{
+  "name": "@noderails/web3",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "ABI encoding, EIP-712 helpers, and contract calldata builders using viem",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist",
+    "lint": "eslint src/"
+  },
+  "dependencies": {
+    "viem": "^2.21.0",
+    "@noderails/common": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.4.0"
+  }
+}

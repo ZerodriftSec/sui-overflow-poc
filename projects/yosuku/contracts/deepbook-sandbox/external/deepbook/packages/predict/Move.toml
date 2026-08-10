@@ -1,0 +1,7 @@
+[package]
+name = "deepbook_predict"
+edition = "2024.beta"
+license = "Apache-2.0"
+
+[addresses]
+deepbook_predict = "0x0"

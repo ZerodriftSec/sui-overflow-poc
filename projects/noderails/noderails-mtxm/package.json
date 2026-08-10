@@ -1,0 +1,22 @@
+{
+  "name": "noderails-mtxm",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Multichain Transaction Manager — submission showcase (Sui lanes). Production signing runs in isolated enclaves.",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "dev": "tsx src/server.ts"
+  },
+  "dependencies": {
+    "@mysten/sui": "^1.21.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.4.0"
+  },
+  "license": "Apache-2.0"
+}

@@ -1,0 +1,105 @@
+// SPDX-License-Identifier: GPL-3.0
+// Copyright (c) 2026 The3rdWebLabs (https://github.com/the3rdweblabs)
+// Author: @CYBWithFlourish (https://github.com/CYBWithFlourish)
+
+export type SuiOutKitMode = "local" | "test" | "live";
+
+export interface SuiOutKitConfig {
+  merchantAddress: string;
+  mode?: SuiOutKitMode;
+  backendUrl?: string;
+  settlementToken?: string | string[];
+}
+
+export interface SupportedCoin {
+  symbol: string;
+  type: string;
+  decimals: number;
+}
+
+export interface CheckoutSessionOptions {
+  amount: number;
+  currency?: string;
+  coinType?: string;
+  metadata?: Record<string, any>;
+  settlementToken?: string | string[];
+}
+
+export interface CheckoutSession {
+  token: string;
+  nonce: string;
+  amount: number;
+  currency: string;
+  resolvedCurrency: string;
+  currencySymbol: string;
+  merchantAddress: string;
+  walrusBlobId?: string;
+  packageId?: string;
+  cryptoRegistryId?: string;
+  cryptoRegistryName?: string;
+  coinType?: string;
+  estimatedRate?: number;
+  supportedCoins?: SupportedCoin[];
+  supportedFiatCurrencies?: string[];
+  localAmount?: number;
+  localCurrency?: string;
+  settlementToken?: string | string[];
+}
+
+export type ChargeMethod = "bank_transfer" | "opay" | "ussd" | "crypto" | "sui_wallet" | "outpay" | "stripe";
+
+export interface VirtualAccount {
+  accountNumber: string;
+  bankName: string;
+  amount: number;
+  expirySeconds: number;
+}
+
+export interface ChargeResponse {
+  status: "success" | "pending" | "error";
+  virtualAccount?: VirtualAccount;
+  opayAuthorizationUrl?: string;
+  ussdCode?: string;
+  paymentCode?: string | null;
+  clientSecret?: string;
+  stripePublicKey?: string;
+  message?: string;
+}
+
+export interface CryptoIntentResponse {
+  nonce: string;
+  receiverAddress: string;
+  amountBaseUnits: number;
+  coinType: string;
+  packageId?: string;
+  registryName?: string;
+  walrusBlobId?: string;
+  rate?: number;
+}
+
+export interface CryptoConfirmResponse {
+  status: "success" | "error";
+  txDigest?: string;
+  walrusBlobId?: string;
+  error?: string;
+}
+
+export interface CheckoutStatusResponse {
+  status: "PENDING" | "PROCESSING" | "SETTLED" | "EXPIRED";
+  txDigest?: string;
+  walrusBlobId?: string;
+  error?: string;
+}
+
+export interface PaymentResult {
+  nonce: string;
+  txDigest: string;
+  walrusBlobId: string;
+}
+
+export interface SuiOutKitModalOptions {
+  onClose?: () => void;
+  onPaymentComplete?: (result: PaymentResult) => void;
+  redirectUrl?: string;
+  autoCloseOnSuccess?: boolean;
+}

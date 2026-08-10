@@ -1,0 +1,74 @@
+---
+title: Quickstart
+description: Create a stream by handle on Sui testnet in a few lines.
+icon: Rocket
+---
+
+# Quickstart
+
+Pay someone by StreamLine handle using an Ed25519 keypair.
+
+## 1. Create a client
+
+```ts
+import { SuiClient } from "@mysten/sui/client";
+import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
+import { decodeSuiPrivateKey } from "@mysten/sui/cryptography";
+import {
+  StreamLine,
+  createKeypairSigner,
+  resolveNetworkConfig,
+} from "@streamline/sdk";
+
+const config = resolveNetworkConfig("testnet");
+const client = new SuiClient({ url: config.fullnodeUrl });
+
+const { secretKey } = decodeSuiPrivateKey(process.env.SUI_PRIVATE_KEY!);
+const keypair = Ed25519Keypair.fromSecretKey(secretKey);
+
+const sl = new StreamLine({
+  network: "testnet",
+  signer: createKeypairSigner({ keypair, client }),
+  client,
+});
+```
+
+## 2. Resolve (optional)
+
+```ts
+const who = await sl.resolve("alice@streamline");
+console.log(who?.address, who?.displayName);
+```
+
+## 3. Create a stream
+
+```ts
+const { digest, streamId } = await sl.stream.to("alice@streamline", {
+  amountUsdc: 100,
+  durationDays: 14,
+  milestones: [{ name: "Delivery", amountUsdc: 100 }],
+});
+
+console.log(digest, streamId);
+```
+
+The signer must hold enough **test USDC** for `amountUsdc`. Use the app faucet on testnet if needed.
+
+## 4. Read status
+
+```ts
+if (streamId) {
+  const status = await sl.streams.get(streamId);
+  console.log(status.state, status.remaining);
+}
+```
+
+## Smoke script
+
+From `packages/sdk`:
+
+```bash
+SUI_PRIVATE_KEY=suiprivkey… RECIPIENT=alice@streamline npm run example:pay
+```
+
+See [`examples/pay-by-name.ts`](https://github.com/minrawsjar/StreamLine/tree/main/packages/sdk/examples/pay-by-name.ts).

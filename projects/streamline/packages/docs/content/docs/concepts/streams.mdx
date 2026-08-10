@@ -1,0 +1,50 @@
+---
+title: Streams
+description: On-chain locked USDC that drips to a recipient under milestone rules.
+icon: Droplets
+---
+
+# Streams
+
+A **stream** is a shared Move object that holds locked USDC for a freelancer (or any recipient). The client funds it up front. Money only flows after milestones are approved, then settles in gasless **drips**.
+
+## Lifecycle
+
+```
+LOCKED → PENDING_REVIEW → DRIPPING → DONE
+              ↑               │
+              └──── dispute / pause paths ──┘
+```
+
+| State | Meaning |
+| --- | --- |
+| `locked` | Funded; waiting for work / first raise |
+| `pending_review` | Freelancer raised a milestone; client (or keeper) must approve |
+| `dripping` | Accruing; keeper (or anyone) can call `drip` |
+| `paused` | Dispute / mutual pause |
+| `done` | Fully paid or closed |
+
+## Actors
+
+- **Client (sender)** — locks USDC, holds `StreamCap`, approves milestones, may cancel if revocable.
+- **Freelancer (recipient)** — raises completions, receives drips.
+- **Keeper** — permissionless worker that drips when the gasless floor accrues and auto-approves after the review window.
+
+## Yield split (v2)
+
+`create_stream_v2` accepts `yieldBps`: a portion of every drip can auto-route into the yield vault. The phone app often uses this; the SDK defaults to `0` (all cash) unless you set `yieldBps`.
+
+## Privacy modes
+
+| Mode | What it is |
+| --- | --- |
+| **Private engagement (default)** | Notes in a shielded pool + lazy vest — hides amount, who↔whom, and drip cadence inside the set. See [Private engagements](/docs/privacy/engagements). |
+| **Amounts-only** | Named `ConfidentialStream` — amounts hidden; parties and milestone timing public. |
+| **Public** | Classic stream — cleartext amounts; enables borrow / yield splits. |
+
+## Related
+
+- [Milestones](/docs/concepts/milestones)
+- [Privacy](/docs/privacy)
+- [SDK: create a stream](/docs/sdk/quickstart)
+- [Indexer stream record](/docs/indexer/rest)

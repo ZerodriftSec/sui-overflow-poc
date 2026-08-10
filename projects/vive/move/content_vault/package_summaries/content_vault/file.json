@@ -1,0 +1,1648 @@
+{
+  "id": {
+    "address": "content_vault",
+    "name": "file"
+  },
+  "doc": null,
+  "immediate_dependencies": [
+    {
+      "address": "content_vault",
+      "name": "access"
+    },
+    {
+      "address": "content_vault",
+      "name": "directory"
+    },
+    {
+      "address": "content_vault",
+      "name": "events"
+    },
+    {
+      "address": "content_vault",
+      "name": "utils"
+    },
+    {
+      "address": "sui",
+      "name": "clock"
+    },
+    {
+      "address": "sui",
+      "name": "object"
+    },
+    {
+      "address": "sui",
+      "name": "table"
+    },
+    {
+      "address": "sui",
+      "name": "transfer"
+    },
+    {
+      "address": "sui",
+      "name": "tx_context"
+    }
+  ],
+  "attributes": [],
+  "functions": {
+    "id": {
+      "source_index": 0,
+      "index": 0,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "file",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "content_vault",
+                    "name": "file"
+                  },
+                  "name": "File",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "sui",
+              "name": "object"
+            },
+            "name": "ID",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "project_id": {
+      "source_index": 1,
+      "index": 1,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "file",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "content_vault",
+                    "name": "file"
+                  },
+                  "name": "File",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "sui",
+              "name": "object"
+            },
+            "name": "ID",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "directory_id": {
+      "source_index": 2,
+      "index": 2,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "file",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "content_vault",
+                    "name": "file"
+                  },
+                  "name": "File",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "sui",
+              "name": "object"
+            },
+            "name": "ID",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "name_hash": {
+      "source_index": 3,
+      "index": 3,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "file",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "content_vault",
+                    "name": "file"
+                  },
+                  "name": "File",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "vector": "u8"
+        }
+      ]
+    },
+    "mime_type": {
+      "source_index": 4,
+      "index": 4,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "file",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "content_vault",
+                    "name": "file"
+                  },
+                  "name": "File",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "vector": "u8"
+        }
+      ]
+    },
+    "current_version": {
+      "source_index": 5,
+      "index": 5,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "file",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "content_vault",
+                    "name": "file"
+                  },
+                  "name": "File",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        "u64"
+      ]
+    },
+    "version_count": {
+      "source_index": 6,
+      "index": 6,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "file",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "content_vault",
+                    "name": "file"
+                  },
+                  "name": "File",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        "u64"
+      ]
+    },
+    "seal_id_prefix": {
+      "source_index": 7,
+      "index": 7,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "file",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "content_vault",
+                    "name": "file"
+                  },
+                  "name": "File",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "vector": "u8"
+        }
+      ]
+    },
+    "borrow_version": {
+      "source_index": 8,
+      "index": 8,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "file",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "content_vault",
+                    "name": "file"
+                  },
+                  "name": "File",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "version",
+          "type_": "u64"
+        }
+      ],
+      "return_": [
+        {
+          "Reference": [
+            false,
+            {
+              "Datatype": {
+                "module": {
+                  "address": "content_vault",
+                  "name": "file"
+                },
+                "name": "VersionInfo",
+                "type_arguments": []
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "version_content_blob_id": {
+      "source_index": 9,
+      "index": 9,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "info",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "content_vault",
+                    "name": "file"
+                  },
+                  "name": "VersionInfo",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "vector": "u8"
+        }
+      ]
+    },
+    "version_metadata_blob_id": {
+      "source_index": 10,
+      "index": 10,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "info",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "content_vault",
+                    "name": "file"
+                  },
+                  "name": "VersionInfo",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "vector": "u8"
+        }
+      ]
+    },
+    "version_content_size": {
+      "source_index": 11,
+      "index": 11,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "info",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "content_vault",
+                    "name": "file"
+                  },
+                  "name": "VersionInfo",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        "u64"
+      ]
+    },
+    "version_walrus_end_epoch": {
+      "source_index": 12,
+      "index": 12,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "info",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "content_vault",
+                    "name": "file"
+                  },
+                  "name": "VersionInfo",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        "u64"
+      ]
+    },
+    "create_file": {
+      "source_index": 13,
+      "index": 13,
+      "doc": " Create a file under `directory` with an initial version.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "directory",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "content_vault",
+                    "name": "directory"
+                  },
+                  "name": "Directory",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "registry",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "content_vault",
+                    "name": "access"
+                  },
+                  "name": "AccessRegistry",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "name_hash",
+          "type_": {
+            "vector": "u8"
+          }
+        },
+        {
+          "name": "mime_type",
+          "type_": {
+            "vector": "u8"
+          }
+        },
+        {
+          "name": "content_blob_id",
+          "type_": {
+            "vector": "u8"
+          }
+        },
+        {
+          "name": "content_hash",
+          "type_": {
+            "vector": "u8"
+          }
+        },
+        {
+          "name": "content_size",
+          "type_": "u64"
+        },
+        {
+          "name": "metadata_blob_id",
+          "type_": {
+            "vector": "u8"
+          }
+        },
+        {
+          "name": "walrus_end_epoch",
+          "type_": "u64"
+        },
+        {
+          "name": "clock",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "clock"
+                  },
+                  "name": "Clock",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "ctx",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "tx_context"
+                  },
+                  "name": "TxContext",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "Datatype": {
+            "module": {
+              "address": "sui",
+              "name": "object"
+            },
+            "name": "ID",
+            "type_arguments": []
+          }
+        }
+      ]
+    },
+    "create_file_entry": {
+      "source_index": 14,
+      "index": 14,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Private",
+      "entry": true,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "directory",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "content_vault",
+                    "name": "directory"
+                  },
+                  "name": "Directory",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "registry",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "content_vault",
+                    "name": "access"
+                  },
+                  "name": "AccessRegistry",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "name_hash",
+          "type_": {
+            "vector": "u8"
+          }
+        },
+        {
+          "name": "mime_type",
+          "type_": {
+            "vector": "u8"
+          }
+        },
+        {
+          "name": "content_blob_id",
+          "type_": {
+            "vector": "u8"
+          }
+        },
+        {
+          "name": "content_hash",
+          "type_": {
+            "vector": "u8"
+          }
+        },
+        {
+          "name": "content_size",
+          "type_": "u64"
+        },
+        {
+          "name": "metadata_blob_id",
+          "type_": {
+            "vector": "u8"
+          }
+        },
+        {
+          "name": "walrus_end_epoch",
+          "type_": "u64"
+        },
+        {
+          "name": "clock",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "clock"
+                  },
+                  "name": "Clock",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "ctx",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "tx_context"
+                  },
+                  "name": "TxContext",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": []
+    },
+    "add_version_internal": {
+      "source_index": 15,
+      "index": 15,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Private",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "file",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "content_vault",
+                    "name": "file"
+                  },
+                  "name": "File",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "content_blob_id",
+          "type_": {
+            "vector": "u8"
+          }
+        },
+        {
+          "name": "content_hash",
+          "type_": {
+            "vector": "u8"
+          }
+        },
+        {
+          "name": "content_size",
+          "type_": "u64"
+        },
+        {
+          "name": "metadata_blob_id",
+          "type_": {
+            "vector": "u8"
+          }
+        },
+        {
+          "name": "walrus_end_epoch",
+          "type_": "u64"
+        },
+        {
+          "name": "created_at_ms",
+          "type_": "u64"
+        },
+        {
+          "name": "created_by",
+          "type_": "address"
+        }
+      ],
+      "return_": []
+    },
+    "add_version": {
+      "source_index": 16,
+      "index": 16,
+      "doc": " Append a new version. Does not touch the parent Directory.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "file",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "content_vault",
+                    "name": "file"
+                  },
+                  "name": "File",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "registry",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "content_vault",
+                    "name": "access"
+                  },
+                  "name": "AccessRegistry",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "content_blob_id",
+          "type_": {
+            "vector": "u8"
+          }
+        },
+        {
+          "name": "content_hash",
+          "type_": {
+            "vector": "u8"
+          }
+        },
+        {
+          "name": "content_size",
+          "type_": "u64"
+        },
+        {
+          "name": "metadata_blob_id",
+          "type_": {
+            "vector": "u8"
+          }
+        },
+        {
+          "name": "walrus_end_epoch",
+          "type_": "u64"
+        },
+        {
+          "name": "clock",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "clock"
+                  },
+                  "name": "Clock",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "ctx",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "tx_context"
+                  },
+                  "name": "TxContext",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": []
+    },
+    "add_version_entry": {
+      "source_index": 17,
+      "index": 17,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Private",
+      "entry": true,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "file",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "content_vault",
+                    "name": "file"
+                  },
+                  "name": "File",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "registry",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "content_vault",
+                    "name": "access"
+                  },
+                  "name": "AccessRegistry",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "content_blob_id",
+          "type_": {
+            "vector": "u8"
+          }
+        },
+        {
+          "name": "content_hash",
+          "type_": {
+            "vector": "u8"
+          }
+        },
+        {
+          "name": "content_size",
+          "type_": "u64"
+        },
+        {
+          "name": "metadata_blob_id",
+          "type_": {
+            "vector": "u8"
+          }
+        },
+        {
+          "name": "walrus_end_epoch",
+          "type_": "u64"
+        },
+        {
+          "name": "clock",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "clock"
+                  },
+                  "name": "Clock",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "ctx",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "tx_context"
+                  },
+                  "name": "TxContext",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": []
+    },
+    "move_file": {
+      "source_index": 18,
+      "index": 18,
+      "doc": " Move a file between directories in one call (O(1) table ops + pointer update).",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "file",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "content_vault",
+                    "name": "file"
+                  },
+                  "name": "File",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "from_dir",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "content_vault",
+                    "name": "directory"
+                  },
+                  "name": "Directory",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "to_dir",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "content_vault",
+                    "name": "directory"
+                  },
+                  "name": "Directory",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "registry",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "content_vault",
+                    "name": "access"
+                  },
+                  "name": "AccessRegistry",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "name_hash",
+          "type_": {
+            "vector": "u8"
+          }
+        },
+        {
+          "name": "ctx",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "tx_context"
+                  },
+                  "name": "TxContext",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": []
+    },
+    "move_file_entry": {
+      "source_index": 19,
+      "index": 19,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Private",
+      "entry": true,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "file",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "content_vault",
+                    "name": "file"
+                  },
+                  "name": "File",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "from_dir",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "content_vault",
+                    "name": "directory"
+                  },
+                  "name": "Directory",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "to_dir",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "content_vault",
+                    "name": "directory"
+                  },
+                  "name": "Directory",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "registry",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "content_vault",
+                    "name": "access"
+                  },
+                  "name": "AccessRegistry",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "name_hash",
+          "type_": {
+            "vector": "u8"
+          }
+        },
+        {
+          "name": "ctx",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "tx_context"
+                  },
+                  "name": "TxContext",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": []
+    },
+    "remove_file": {
+      "source_index": 20,
+      "index": 20,
+      "doc": " Remove a file entry from its directory. The File shared object remains (versions preserved).",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "file",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "content_vault",
+                    "name": "file"
+                  },
+                  "name": "File",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "directory",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "content_vault",
+                    "name": "directory"
+                  },
+                  "name": "Directory",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "registry",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "content_vault",
+                    "name": "access"
+                  },
+                  "name": "AccessRegistry",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "name_hash",
+          "type_": {
+            "vector": "u8"
+          }
+        },
+        {
+          "name": "ctx",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "tx_context"
+                  },
+                  "name": "TxContext",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": []
+    },
+    "remove_file_entry": {
+      "source_index": 21,
+      "index": 21,
+      "doc": null,
+      "attributes": [],
+      "visibility": "Private",
+      "entry": true,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "file",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "content_vault",
+                    "name": "file"
+                  },
+                  "name": "File",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "directory",
+          "type_": {
+            "Reference": [
+              true,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "content_vault",
+                    "name": "directory"
+                  },
+                  "name": "Directory",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "registry",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "content_vault",
+                    "name": "access"
+                  },
+                  "name": "AccessRegistry",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "name_hash",
+          "type_": {
+            "vector": "u8"
+          }
+        },
+        {
+          "name": "ctx",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "tx_context"
+                  },
+                  "name": "TxContext",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": []
+    }
+  },
+  "structs": {
+    "VersionInfo": {
+      "index": 0,
+      "doc": " Pointer to one immutable Walrus content+metadata snapshot.",
+      "attributes": [],
+      "abilities": [
+        "Copy",
+        "Drop",
+        "Store"
+      ],
+      "type_parameters": [],
+      "fields": {
+        "positional_fields": false,
+        "fields": {
+          "version": {
+            "index": 0,
+            "doc": null,
+            "type_": "u64"
+          },
+          "content_blob_id": {
+            "index": 1,
+            "doc": null,
+            "type_": {
+              "vector": "u8"
+            }
+          },
+          "content_hash": {
+            "index": 2,
+            "doc": null,
+            "type_": {
+              "vector": "u8"
+            }
+          },
+          "content_size": {
+            "index": 3,
+            "doc": null,
+            "type_": "u64"
+          },
+          "metadata_blob_id": {
+            "index": 4,
+            "doc": null,
+            "type_": {
+              "vector": "u8"
+            }
+          },
+          "walrus_end_epoch": {
+            "index": 5,
+            "doc": null,
+            "type_": "u64"
+          },
+          "created_at_ms": {
+            "index": 6,
+            "doc": null,
+            "type_": "u64"
+          },
+          "created_by": {
+            "index": 7,
+            "doc": null,
+            "type_": "address"
+          }
+        }
+      }
+    },
+    "File": {
+      "index": 1,
+      "doc": " Shared file object. Version appends only touch this object, not the parent Directory.",
+      "attributes": [],
+      "abilities": [
+        "Key"
+      ],
+      "type_parameters": [],
+      "fields": {
+        "positional_fields": false,
+        "fields": {
+          "id": {
+            "index": 0,
+            "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "UID",
+                "type_arguments": []
+              }
+            }
+          },
+          "directory_id": {
+            "index": 1,
+            "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "ID",
+                "type_arguments": []
+              }
+            }
+          },
+          "project_id": {
+            "index": 2,
+            "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "object"
+                },
+                "name": "ID",
+                "type_arguments": []
+              }
+            }
+          },
+          "name_hash": {
+            "index": 3,
+            "doc": null,
+            "type_": {
+              "vector": "u8"
+            }
+          },
+          "mime_type": {
+            "index": 4,
+            "doc": null,
+            "type_": {
+              "vector": "u8"
+            }
+          },
+          "current_version": {
+            "index": 5,
+            "doc": null,
+            "type_": "u64"
+          },
+          "version_count": {
+            "index": 6,
+            "doc": null,
+            "type_": "u64"
+          },
+          "versions": {
+            "index": 7,
+            "doc": null,
+            "type_": {
+              "Datatype": {
+                "module": {
+                  "address": "sui",
+                  "name": "table"
+                },
+                "name": "Table",
+                "type_arguments": [
+                  {
+                    "phantom": true,
+                    "argument": "u64"
+                  },
+                  {
+                    "phantom": true,
+                    "argument": {
+                      "Datatype": {
+                        "module": {
+                          "address": "content_vault",
+                          "name": "file"
+                        },
+                        "name": "VersionInfo",
+                        "type_arguments": []
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "seal_id_prefix": {
+            "index": 8,
+            "doc": null,
+            "type_": {
+              "vector": "u8"
+            }
+          },
+          "created_at_ms": {
+            "index": 9,
+            "doc": null,
+            "type_": "u64"
+          },
+          "created_by": {
+            "index": 10,
+            "doc": null,
+            "type_": "address"
+          }
+        }
+      }
+    }
+  },
+  "enums": {}
+}

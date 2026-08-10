@@ -1,0 +1,55 @@
+---
+title: Introduction
+description: Programmable micropayments on Sui — streams, handles, and gasless settlement.
+icon: BookOpen
+---
+
+# StreamLine
+
+StreamLine turns paying someone into a continuous, milestone-gated financial flow on **Sui**. Instead of lump-sum invoices, a client locks USDC into a shared on-chain stream. Funds drip to the recipient as work progresses — with rules enforced by Move, not a middleman.
+
+## Who this is for
+
+| Audience | Start here |
+| --- | --- |
+| Product & builders | [Concepts](/docs/concepts/streams) |
+| Privacy-first teams | [Privacy](/docs/privacy) |
+| Yield, credit & payroll | [Finance](/docs/finance) |
+| Agents & scripts | [SDK quickstart](/docs/sdk/quickstart) |
+| Backend / indexers | [Indexer API](/docs/indexer) |
+| Protocol engineers | [Architecture](/docs/protocol/architecture) |
+
+## How it fits together
+
+```
+Writers (app / SDK) ──PTB──► Move package (streamline::stream)
+                                    │
+                                    ▼ events
+                            Rust indexer (REST + WS)
+                                    │
+Readers (app / SDK) ◄───────────────┘
+```
+
+- **Move** is the source of truth for locks, milestones, and drips.
+- **Indexer** caches state for fast reads and live updates.
+- **Keeper** permissionlessly settles drips and auto-approves silent clients.
+- **App** is the human product (zkLogin, Pro payroll, privacy UI).
+- **`@streamline/sdk`** is the headless path for machines — resolve a handle, create a stream, read status.
+
+## What you can do today
+
+- Create milestone streams that lock testnet USDC
+- Address people as `alice@streamline` (SuiNS subnames)
+- Read stream state over REST / WebSocket
+- Run agents with a keypair or Enoki-sponsored gas
+
+Privacy modes (default private engagement, amounts-only, public), yield vaults, borrowing, and payroll are live in the protocol and app. Start with **[Privacy](/docs/privacy)** and **[Finance](/docs/finance)** — SDK v1 stays on the clear-stream path.
+
+<Cards>
+  <Card title="Streams" href="/docs/concepts/streams" description="Lock, raise, approve, drip" />
+  <Card title="Privacy" href="/docs/privacy" description="Engagements · amounts · identity · Seal" />
+  <Card title="Finance" href="/docs/finance" description="Yield · borrow · payroll" />
+  <Card title="Handles" href="/docs/concepts/handles" description="name@streamline identity" />
+  <Card title="@streamline/sdk" href="/docs/sdk" description="Pay by name from TypeScript" />
+  <Card title="Indexer" href="/docs/indexer" description="REST + live WebSocket" />
+</Cards>

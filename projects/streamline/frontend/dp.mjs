@@ -1,0 +1,15 @@
+import { buildPoseidon } from "circomlibjs";
+import * as snarkjs from "snarkjs";
+import fs from "fs";
+const p=await buildPoseidon(); const F=p.F; const H=(a,b)=>F.toObject(p([a,b]));
+const value=1000n, pk=H(11n,0n), rho=101n;
+const input={ value:value.toString(), pk:pk.toString(), rho:rho.toString() };
+const dir="/Users/swarnimraj/StreamLine/circuits/build/deposit";
+await snarkjs.wtns.calculate(input, dir+"/deposit_js/deposit.wasm", "/tmp/dep.wtns");
+const {proof,publicSignals}=await snarkjs.groth16.prove(dir+"/deposit.zkey","/tmp/dep.wtns");
+console.log("verify:", await snarkjs.groth16.verify(JSON.parse(fs.readFileSync(dir+"/deposit.vkey.json")), publicSignals, proof));
+console.log("cm:", publicSignals[0], "value:", publicSignals[1]);
+fs.writeFileSync(dir+"/proof.json",JSON.stringify(proof));
+fs.writeFileSync(dir+"/public.json",JSON.stringify(publicSignals));
+fs.copyFileSync(dir+"/deposit.vkey.json", dir+"/verification_key.json");
+console.log("DONE");

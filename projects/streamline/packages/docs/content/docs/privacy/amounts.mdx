@@ -1,0 +1,63 @@
+---
+title: Confidential amounts
+description: Amounts-only compat mode — hide balances with Groth16; parties stay public.
+icon: EyeOff
+---
+
+# Confidential amounts
+
+**Amounts-only** mode (`ConfidentialStream`) hides **how much** is locked, remaining, earned, and dripped. It does **not** hide who pays whom or when drips happen.
+
+For the **default** create path that also hides the payment graph and drip cadence, see [Private engagements](/docs/privacy/engagements).
+
+## How it works
+
+```
+Public Coin  ──wrap──►  Poseidon commitments (on-chain)
+                              │
+                     Groth16 drip / transfer proofs
+                              │
+                         ◄──unwrap──  Public Coin (cash out)
+```
+
+1. **Commit, don’t publish.** Amounts are bound in **Poseidon** commitments with fresh blindings. The chain stores commitments; not the plaintext.
+2. **Prove every move.** Each confidential drip carries a **Groth16** proof (BN254) that the new commitments are a valid debit/credit of the old ones and that the moved amount sits in a **safe range**. Verification uses Sui’s native `sui::groth16`.
+3. **Seal the openings.** Secret openings (values + blindings) are **Seal-encrypted to both wallets** and decrypted only in the browser.
+4. **Rotate on drip.** Blindings change as value moves; the Seal envelope is refreshed.
+
+## On-chain what stays public
+
+On a `ConfidentialStream` object and its events:
+
+| Field | Visibility |
+| --- | --- |
+| `sender` / `freelancer` | **Public** |
+| Locked reserve total at create | **Public** |
+| Milestone index / raise / approve | **Public** |
+| Drip **timestamp** | **Public** (no amount on `ConfStreamDripped`) |
+| Remaining / earned / per-drip amount | **Hidden** |
+| Claim / unwrap amount | **Revealed** at cash-out |
+
+## Why keep this mode
+
+Use amounts-only when you still need a **named stream object**:
+
+- Milestones + auto-approve
+- Mutual dispute / pause
+- Pro payroll suspend / resume / stop
+- Path toward borrow / yield (needs identifiable stream PV)
+
+## Trade-offs (stated plainly)
+
+| You gain | You trade |
+| --- | --- |
+| Amount privacy between the two parties | Graph + cadence still leak |
+| On-chain ZK verification | Heavier create / drip payloads (proofs) |
+| Milestone / dispute UX on a named object | Not the default “full private” path |
+| Local Seal decryption | Cash-out reveals the exit amount |
+
+## In the product
+
+In the StreamLine app: **Full private** is the default toggle. Choose **amounts-only compat** when you need milestones or dispute. Proof generation and Seal encryption run in the browser; sponsorship keeps the flow gasless for zkLogin users.
+
+SDK v1 remains the clear-stream path (`stream.to`). Treat the app as the reference client for private modes today.

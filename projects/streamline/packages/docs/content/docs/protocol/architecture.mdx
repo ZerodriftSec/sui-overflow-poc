@@ -1,0 +1,41 @@
+---
+title: Architecture
+description: Move truth, indexer reads, keeper settlement, app and SDK writers.
+icon: Network
+---
+
+# Architecture
+
+StreamLine separates **write truth**, **read cache**, and **settlement**.
+
+```
+┌─────────────┐     ┌─────────────┐
+│  Phone / Pro│     │ @streamline │
+│     app     │     │    /sdk     │
+└──────┬──────┘     └──────┬──────┘
+       │  PTB + gas/sponsor │
+       └─────────┬─────────┘
+                 ▼
+        ┌────────────────┐
+        │  Sui Move pkg  │  streamline::stream / private_stream / shielded_pool / …
+        └────────┬───────┘
+                 │ events
+                 ▼
+        ┌────────────────┐      ┌────────────┐
+        │    Indexer     │◄────►│   Keeper   │  drip / auto_approve
+        │  REST + WS     │      └────────────┘
+        └────────┬───────┘
+                 │
+                 ▼
+              Clients
+```
+
+## Design rules
+
+1. **Never trust the indexer for authorization** — caps and Move entrypoints enforce rights.
+2. **Gasless UX** — users via Enoki; keepers pay settlement gas and earn a tiny on-chain tip.
+3. **SDK stays narrow** — create + resolve + read first; expand when agents need raise/approve.
+
+## Privacy & DeFi
+
+**Privacy** and **finance** are protocol pillars — see [Privacy](/docs/privacy) and [Finance](/docs/finance) for confidential amounts, yield, stream-backed borrowing, and Pro payroll. SDK v1 stays on the clear-stream write path; the app is the reference client for private mode and treasury ops.

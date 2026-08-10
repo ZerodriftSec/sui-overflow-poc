@@ -1,0 +1,191 @@
+{
+  "id": {
+    "address": "content_vault",
+    "name": "utils"
+  },
+  "doc": null,
+  "immediate_dependencies": [
+    {
+      "address": "std",
+      "name": "vector"
+    },
+    {
+      "address": "sui",
+      "name": "hash"
+    },
+    {
+      "address": "sui",
+      "name": "object"
+    }
+  ],
+  "attributes": [],
+  "functions": {
+    "is_prefix": {
+      "source_index": 0,
+      "index": 0,
+      "doc": " Returns true if `prefix` is a byte-prefix of `word`.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "prefix",
+          "type_": {
+            "vector": "u8"
+          }
+        },
+        {
+          "name": "word",
+          "type_": {
+            "vector": "u8"
+          }
+        }
+      ],
+      "return_": [
+        "bool"
+      ]
+    },
+    "name_hash": {
+      "source_index": 1,
+      "index": 1,
+      "doc": " Domain-separated name hash: blake2b256(project_id_bytes || name_bytes).",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "project_id",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "sui",
+                "name": "object"
+              },
+              "name": "ID",
+              "type_arguments": []
+            }
+          }
+        },
+        {
+          "name": "name",
+          "type_": {
+            "vector": "u8"
+          }
+        }
+      ],
+      "return_": [
+        {
+          "vector": "u8"
+        }
+      ]
+    },
+    "seal_id_prefix": {
+      "source_index": 2,
+      "index": 2,
+      "doc": " Seal identity prefix binding an encryption to a project.\n Full identity is typically: project_id_bytes || file_id_bytes || nonce.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "project_id",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "sui",
+                "name": "object"
+              },
+              "name": "ID",
+              "type_arguments": []
+            }
+          }
+        }
+      ],
+      "return_": [
+        {
+          "vector": "u8"
+        }
+      ]
+    },
+    "build_seal_id": {
+      "source_index": 3,
+      "index": 3,
+      "doc": " Build a seal identity: project_id || file_id || nonce.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "project_id",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "sui",
+                "name": "object"
+              },
+              "name": "ID",
+              "type_arguments": []
+            }
+          }
+        },
+        {
+          "name": "file_id",
+          "type_": {
+            "Datatype": {
+              "module": {
+                "address": "sui",
+                "name": "object"
+              },
+              "name": "ID",
+              "type_arguments": []
+            }
+          }
+        },
+        {
+          "name": "nonce",
+          "type_": {
+            "vector": "u8"
+          }
+        }
+      ],
+      "return_": [
+        {
+          "vector": "u8"
+        }
+      ]
+    },
+    "project_id_bytes_from_seal_id": {
+      "source_index": 4,
+      "index": 4,
+      "doc": " Extract project_id bytes (first 32) from a seal identity.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "id",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "vector": "u8"
+              }
+            ]
+          }
+        }
+      ],
+      "return_": [
+        {
+          "vector": "u8"
+        }
+      ]
+    }
+  },
+  "structs": {},
+  "enums": {}
+}

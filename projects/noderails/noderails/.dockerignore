@@ -1,0 +1,64 @@
+# ── .dockerignore ──
+# Keep the Docker build context minimal — only backend packages + server
+
+# ── Dependencies (re-installed in container) ──
+node_modules
+.pnpm-store
+
+# ── Build artifacts (rebuilt in container) ──
+dist
+build
+.next
+*.tsbuildinfo
+.turbo
+
+# ── Frontend apps (NOT dockerized) ──
+apps
+
+# ── Services we don't build in this image ──
+services/setup-cli
+
+# ── Foundry / smart contracts ──
+noderails-contracts
+
+# ── Chainlink hackathon code ──
+chainlink-hackathon
+
+# ── IDE / AI ──
+.vscode
+.idea
+.cursor
+*.swp
+*.swo
+
+# ── Git ──
+.git
+.gitignore
+.github
+
+# ── Docs ──
+docs
+
+# ── OS ──
+.DS_Store
+Thumbs.db
+
+# ── Env files (pass at runtime via docker-compose, not baked in) ──
+.env
+.env.local
+.env.*.local
+.env.example
+
+# ── Logs / tests ──
+logs
+coverage
+*.log
+
+# ── Dev / misc files ──
+*.md
+!packages/*/README.md
+scripts
+noderails-logo*
+Caddyfile
+docker-compose.yml
+Dockerfile

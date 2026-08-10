@@ -1,0 +1,74 @@
+{
+  "version": 1,
+  "mode": "managed",
+  "network": "testnet",
+  "deployedAt": "2026-07-18T22:26:34.843Z",
+  "operator": "0xcad0f800f44a48360c01e9fa2d21e779bd829cb60e7220227ed16bb74d4d73e5",
+  "source": {
+    "repository": "https://github.com/MystenLabs/deepbookv3",
+    "branch": "predict-testnet-4-16",
+    "commit": "b63a565c6f867103553557912f87ef35574eef42",
+    "packagePath": "contracts/predict"
+  },
+  "packageId": "0xf5716c88594bb34e89350717bc5938b0879f63262eedcb8cb1064d512563cb34",
+  "registryId": "0xee273bfcfe17308125be540999d9a96348d5c6a7d62c93403342814ffdebba2c",
+  "adminCapId": "0xf12cf6cfa235864d9f7c88650ce724bc76dc16e0fb1082ce46d795c88b4eed97",
+  "upgradeCapId": "0x0c5f51bac1485e7e0b74b6cfee896c320df43528e0f8ef07433045f89f74b11f",
+  "predictObjectId": "0xc075248dc9e51527229564e37416d816e01df046ba77ce167151362a74fa9794",
+  "oracleCapId": "0xc98d88f907b50886eb2cd1fdf4ebe86273ac5071e970d800cba450e828247bf3",
+  "dusdcType": "0xe95040085976bfd54a1a07225cd46c8a2b4e8e2b6732f140a0fc49850ba73e1a::dusdc::DUSDC",
+  "dusdcCurrencyId": "0xf3000dff421833d4bb8ed58fac146d691a3aaba2785aa1989af65a7089ca3e9c",
+  "liquiditySeedRaw": "500000000",
+  "oracles": [
+    {
+      "oracleId": "0x7bf729b999a51aef6735228648518018ce7c2ee68f0806d716d31be7f79c005e",
+      "underlyingAsset": "BTC",
+      "expiry": 1784707200000,
+      "minStrike": 10000000000000,
+      "tickSize": 2000000000,
+      "createdDigest": "AQLejmWAtvSDXVhhWj3gom463aHXFwBdexjB6JC1rjYk"
+    },
+    {
+      "oracleId": "0x90c1340589f8cbe0eb53ace34bf8744d82be72caa4a090fe3ee4ef47b12619c0",
+      "underlyingAsset": "BTC",
+      "expiry": 1784880000000,
+      "minStrike": 10000000000000,
+      "tickSize": 2000000000,
+      "createdDigest": "GExPynVpL7nwVwtxnsFHU4Z71sDEMAZpodg3gtKGGd6m"
+    },
+    {
+      "oracleId": "0x7c36aa7b553eb50514148d1f5d386aa6ec154bfe8f4c477a01f58e151760ae49",
+      "underlyingAsset": "BTC",
+      "expiry": 1785484800000,
+      "minStrike": 10000000000000,
+      "tickSize": 2000000000,
+      "createdDigest": "B5FJuLpez5E8Bm3yKdb9rY6NuSF8aQXPWtWN6rU1QjNY"
+    },
+    {
+      "oracleId": "0x30a026f01c5ce6c6f32f45557afdfbe9071ea50a4ab82326fb62942c4b327fcd",
+      "underlyingAsset": "BTC",
+      "expiry": 1787904000000,
+      "minStrike": 10000000000000,
+      "tickSize": 2000000000,
+      "createdDigest": "12UndmSHBiU7htuiiMgHU3gT4qF2HtJDWApncJqSBg8r"
+    }
+  ],
+  "digests": {
+    "publish": "4KkePUu1n2UASrCQqobADyaauxZ7Taq5U7DPfc4TcuFE",
+    "initialize": "FR7QTiTGobkiNVbDPniMse688MnihdhsB8gdj3Yt16UX",
+    "oracle_cap": "4QRW8RX3vc2akqDJzuJoEMEgUAbDyLYj4xtu5BjHYxEG",
+    "oracle_create": [
+      "AQLejmWAtvSDXVhhWj3gom463aHXFwBdexjB6JC1rjYk",
+      "GExPynVpL7nwVwtxnsFHU4Z71sDEMAZpodg3gtKGGd6m",
+      "B5FJuLpez5E8Bm3yKdb9rY6NuSF8aQXPWtWN6rU1QjNY",
+      "12UndmSHBiU7htuiiMgHU3gT4qF2HtJDWApncJqSBg8r"
+    ],
+    "oracle_activate": [
+      "79bTy5KAnh5Q3J28ocq2M6spdfwt4kGpM6t9NLxqo3dM",
+      "DhTE2MShEVkQHGmBHg5aoArZFftEEXVkuM9eeT3kogSe",
+      "6m2cnXnorLvnXpk5hZpWy9Kafowo3vMHoUArwu54XoLP",
+      "9xcXL3tBkGjaqnBBmdSAqZGCHPJoM4XbFUEExoAVZA1U"
+    ],
+    "liquidity": "D8HpwRaYMeCA3bBADFrNNA2hBEubmjRwUjsYrPsgja63"
+  }
+}

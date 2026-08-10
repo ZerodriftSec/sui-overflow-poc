@@ -1,0 +1,138 @@
+{
+  "id": {
+    "address": "content_vault",
+    "name": "seal_policy"
+  },
+  "doc": null,
+  "immediate_dependencies": [
+    {
+      "address": "content_vault",
+      "name": "access"
+    },
+    {
+      "address": "content_vault",
+      "name": "utils"
+    },
+    {
+      "address": "sui",
+      "name": "object"
+    },
+    {
+      "address": "sui",
+      "name": "tx_context"
+    }
+  ],
+  "attributes": [],
+  "functions": {
+    "seal_approve": {
+      "source_index": 0,
+      "index": 0,
+      "doc": " Seal key-server entrypoint.\n\n Identity layout (after Seal strips the package-id prefix):\n   project_id_bytes (32) || file_id_bytes (32) || nonce...\n\n Policy: caller must hold READ on the project's AccessRegistry, and the\n identity must be prefixed by that registry's project_id.",
+      "attributes": [],
+      "visibility": "Private",
+      "entry": true,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "id",
+          "type_": {
+            "vector": "u8"
+          }
+        },
+        {
+          "name": "registry",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "content_vault",
+                    "name": "access"
+                  },
+                  "name": "AccessRegistry",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "ctx",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "tx_context"
+                  },
+                  "name": "TxContext",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": []
+    },
+    "assert_seal_approve": {
+      "source_index": 1,
+      "index": 1,
+      "doc": " Same check exposed as a pure assert for tests / PTB composition.",
+      "attributes": [],
+      "visibility": "Public",
+      "entry": false,
+      "type_parameters": [],
+      "parameters": [
+        {
+          "name": "id",
+          "type_": {
+            "vector": "u8"
+          }
+        },
+        {
+          "name": "registry",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "content_vault",
+                    "name": "access"
+                  },
+                  "name": "AccessRegistry",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "ctx",
+          "type_": {
+            "Reference": [
+              false,
+              {
+                "Datatype": {
+                  "module": {
+                    "address": "sui",
+                    "name": "tx_context"
+                  },
+                  "name": "TxContext",
+                  "type_arguments": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "return_": []
+    }
+  },
+  "structs": {},
+  "enums": {}
+}

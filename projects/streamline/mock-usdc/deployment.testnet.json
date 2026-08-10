@@ -1,0 +1,12 @@
+{
+  "network": "testnet",
+  "package_id": "0xf6ce32fe48338464f3947b9d15cd4a0befa0fe9b3926fd9daf6cee3658482ed3",
+  "coin_type": "0xf6ce32fe48338464f3947b9d15cd4a0befa0fe9b3926fd9daf6cee3658482ed3::mock_usdc::MOCK_USDC",
+  "treasury_cap": "0xa7cb971f4f93e5713c5703f63f3bc17fdf0f6bf1f9795dc010ac164827715330",
+  "coin_metadata": "0x4347d38bfc5d3a7878a360ae327757e0b8fd219c49efb06151755bffeb1effcd",
+  "upgrade_cap": "0xe719083d7d83b006cf74b32db0839f8beebd34cfc3bc2a97b1e5d6faf8b537c7",
+  "decimals": 6,
+  "symbol": "USDC",
+  "note": "Mintable test USDC for the StreamLine demo. TreasuryCap is shared — anyone can call mock_usdc::faucet. Testnet only.",
+  "published_at": "2026-06-09"
+}

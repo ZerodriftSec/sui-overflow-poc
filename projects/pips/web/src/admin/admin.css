@@ -1,0 +1,566 @@
+/* Admin dashboard tokens and component classes. Scoped to [data-admin] and imported only from
+   src/admin/, never from the global @theme in styles.css.
+
+   This is PIPS, not a generic dashboard theme: same pure black canvas, same molded surfaces, same amber
+   accent, same green/red for facts, same mono-uppercase micro-label over a big tabular number. What is
+   different is density and posture, it is an instrument you read, not a device you play. So the shapes
+   are tighter than the menu drawer and every number aligns in its column.
+
+   Contrast figures below are computed WCAG values against #000. */
+
+[data-admin] {
+  /* Surfaces. Molded material like the app's cards, not luminance steps. */
+  --a-bg: #000000;
+  --a-surface: #0d0d0d;
+  --a-surface-2: #131312;
+  --a-surface-hover: #191918;
+  --a-overlay: #161615;
+  --a-border: #1c1c1a;
+  --a-border-strong: #2a2a27;
+
+  /* Text, matching the app's high-contrast-on-OLED tiers. */
+  --a-text: #f2f2f2; /* 18.1 AAA */
+  --a-text-2: #b6b6b6; /* 9.4  AAA */
+  --a-text-3: #8a8a8a; /* 5.2  AA  */
+  --a-text-muted: #5c5c5a; /* 2.4 fails AA: decorative only, never carries information */
+
+  /* Accent is the brand amber, same as every commit button in the product. */
+  --a-accent: #ffc016; /* 12.6 */
+  --a-accent-dim: #d18a0a;
+  --a-accent-soft: rgb(255 192 22 / 0.12);
+
+  /* Status. Green and red are the product's up/down, so a win reads the same here as on the device. */
+  --a-critical: #ff5a4d; /* 6.1 */
+  --a-warn: #ffb224; /* 11.4 */
+  --a-ok: #34d399; /* 10.4 */
+  --a-info: #5aa8ff; /* 8.0 */
+
+  /* Each status hue at 13% for badge and callout backgrounds. Defined once so a tint is never a raw
+     rgb() sitting in a component file, where nobody would ever find it again to change it. */
+  --a-critical-soft: rgb(255 90 77 / 0.13);
+  --a-warn-soft: rgb(255 178 36 / 0.13);
+  --a-ok-soft: rgb(52 211 153 / 0.13);
+  --a-info-soft: rgb(90 168 255 / 0.13);
+
+  /* Neutral layers: an icon well, a bar track, the floor under an inset block, and the drawer scrim. */
+  --a-tint: rgb(255 255 255 / 0.04);
+  --a-track: rgb(255 255 255 / 0.05);
+  --a-well: #080808;
+  --a-scrim: rgb(0 0 0 / 0.6);
+  --a-accent-glow: 0 0 8px rgb(255 192 22 / 0.45);
+
+  --a-radius: 16px;
+  --a-radius-sm: 10px;
+  --a-radius-xs: 7px;
+
+  background: var(--a-bg);
+  color: var(--a-text);
+  font-family: 'Gabarito Variable', ui-sans-serif, system-ui, sans-serif;
+  font-size: 13px;
+  line-height: 1.45;
+  /* Every number aligns in its column. The single highest-impact typographic choice on this surface. */
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+
+[data-admin] h1,
+[data-admin] h2,
+[data-admin] h3 {
+  line-height: 1.15;
+  letter-spacing: -0.015em;
+}
+
+.a-page-title {
+  font-size: 26px;
+  font-weight: 800;
+}
+
+.a-section-title {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+/* The micro-label: mono, uppercase, wide tracking. Same voice as the device readouts. */
+.a-label {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--a-text-3);
+}
+
+/* ── Surfaces ──────────────────────────────────────────────────────────── */
+
+/* The molded panel, the admin twin of .surface-skeuo: opaque, beveled, sitting on black. */
+.a-panel,
+.a-panel-flush {
+  background: linear-gradient(180deg, #111110 0%, #0d0d0d 56%, #090909 100%), #0d0d0d;
+  border: 1px solid var(--a-border);
+  border-radius: var(--a-radius);
+  box-shadow:
+    inset 0 1px 0 #242422,
+    inset 0 -1px 4px rgb(0 0 0 / 0.46),
+    0 1px 0 #050505;
+}
+
+.a-panel {
+  padding: 16px;
+}
+
+.a-panel-flush {
+  overflow: hidden;
+}
+
+/* Panel header: taller and quieter than a table head, so the two never blur into each other. */
+.a-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--a-border);
+}
+
+/* ── Tables ────────────────────────────────────────────────────────────── */
+
+.a-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.a-table th {
+  height: 30px;
+  padding: 0 14px;
+  text-align: left;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--a-text-3);
+  background: rgb(255 255 255 / 0.02);
+  border-bottom: 1px solid var(--a-border);
+  white-space: nowrap;
+}
+
+.a-table td {
+  height: 38px;
+  padding: 0 14px;
+  border-bottom: 1px solid rgb(255 255 255 / 0.04);
+  color: var(--a-text-2);
+}
+
+.a-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* Numbers right, labels left, always. */
+.a-num {
+  white-space: nowrap;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--a-text);
+  font-weight: 600;
+}
+
+/* Numeric columns hug their content so a wide screen gives the slack to the name column instead of
+   flinging every figure at the far rim. Cells only: on a flex item `width: 1%` becomes the automatic
+   minimum size, so the number keeps its nowrap width and paints straight over its neighbour. */
+td.a-num,
+th.a-num {
+  width: 1%;
+}
+
+/* The primary cell in a row: the thing you scan for. */
+.a-key {
+  color: var(--a-text);
+  font-weight: 600;
+}
+
+/* The column that absorbs the leftover width and truncates instead of widening the table. An auto-layout
+   table sizes columns to content, so one long fingerprint or module path pushes the numbers off the panel
+   and out of reach. `max-width: 0` opts this cell out of that measurement. */
+.a-cell-fill {
+  width: 100%;
+  max-width: 0;
+}
+
+.a-row {
+  cursor: pointer;
+  box-shadow: inset 2px 0 0 transparent;
+  transition:
+    background-color 120ms ease-out,
+    box-shadow 120ms ease-out;
+}
+
+.a-row:hover {
+  background: var(--a-surface-hover);
+}
+
+.a-row[aria-selected='true'] {
+  background: var(--a-surface-hover);
+  box-shadow: inset 2px 0 0 var(--a-accent);
+}
+
+/* ── Badges ────────────────────────────────────────────────────────────── */
+
+/* Full-strength text on the same hue at 12% alpha. A solid fill shouts, and then red stops meaning
+   anything, which is the first thing to erode on a surface like this. */
+.a-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 6px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+
+.a-badge-critical {
+  color: var(--a-critical);
+  background: var(--a-critical-soft);
+}
+.a-badge-warn {
+  color: var(--a-warn);
+  background: var(--a-warn-soft);
+}
+.a-badge-ok {
+  color: var(--a-ok);
+  background: var(--a-ok-soft);
+}
+.a-badge-info {
+  color: var(--a-info);
+  background: var(--a-info-soft);
+}
+.a-badge-accent {
+  color: var(--a-accent);
+  background: var(--a-accent-soft);
+}
+.a-badge-neutral {
+  color: var(--a-text-3);
+  background: rgb(255 255 255 / 0.06);
+}
+
+/* ── Numbers ───────────────────────────────────────────────────────────── */
+
+.a-metric {
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--a-text);
+}
+
+.a-metric-sm {
+  font-size: 21px;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.015em;
+  font-variant-numeric: tabular-nums;
+  color: var(--a-text);
+}
+
+/* ── Controls ──────────────────────────────────────────────────────────── */
+
+.a-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: var(--a-radius-xs);
+  border: 1px solid var(--a-border-strong);
+  background: linear-gradient(180deg, #1a1a18 0%, #131312 100%);
+  color: var(--a-text-2);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background-color 120ms ease-out,
+    border-color 120ms ease-out,
+    color 120ms ease-out;
+}
+
+.a-btn:hover:not(:disabled) {
+  background: var(--a-surface-hover);
+  border-color: #3a3a35;
+  color: var(--a-text);
+}
+
+.a-btn:active:not(:disabled) {
+  transform: translateY(0.5px);
+}
+
+.a-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.a-btn-primary {
+  background: linear-gradient(180deg, #ffd24a 0%, #f2a60e 100%);
+  border-color: #d9990f;
+  color: #1a1200;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.45),
+    0 1px 0 rgb(71 45 0 / 0.65);
+}
+
+.a-btn-primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, #ffdc6b 0%, #f9b31c 100%);
+  border-color: #d9990f;
+  color: #1a1200;
+}
+
+/* Segmented control: the window picker. One track, the active cell lifted out of it. */
+.a-seg {
+  display: inline-flex;
+  padding: 3px;
+  gap: 2px;
+  border-radius: var(--a-radius-sm);
+  border: 1px solid var(--a-border);
+  background: #0a0a09;
+  box-shadow: inset 0 2px 5px rgb(0 0 0 / 0.6);
+}
+
+.a-seg-item {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 26px;
+  min-width: 46px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--a-text-3);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease-out,
+    color 120ms ease-out;
+}
+
+.a-seg-item:hover:not([data-active='true']) {
+  color: var(--a-text-2);
+}
+
+.a-seg-item[data-active='true'] {
+  background: linear-gradient(180deg, #2c2b27 0%, #201f1c 100%);
+  color: var(--a-accent);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.08),
+    0 1px 2px rgb(0 0 0 / 0.5);
+}
+
+.a-select,
+.a-input {
+  height: 32px;
+  padding: 0 10px;
+  border-radius: var(--a-radius-xs);
+  border: 1px solid var(--a-border-strong);
+  background-color: #0a0a09;
+  color: var(--a-text);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: inset 0 1px 3px rgb(0 0 0 / 0.5);
+}
+
+/* The native select chrome is a light-mode widget and reads as a stray browser part on this surface,
+   so it gets our own chevron. */
+.a-select {
+  appearance: none;
+  padding-right: 26px;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238a8a8a' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 9px center;
+}
+
+.a-select option {
+  background: #0f0f0e;
+  color: var(--a-text);
+}
+
+.a-select:hover,
+.a-input:hover {
+  border-color: #3a3a35;
+}
+
+/* Keyboard-first, never outline: none. Amber, matching the product's hardware focus ring. */
+[data-admin] :focus-visible {
+  outline: 2px solid rgb(255 192 22 / 0.55);
+  outline-offset: 2px;
+}
+
+/* ── Navigation ────────────────────────────────────────────────────────── */
+
+/* The rail sits a shade under the canvas so the content area reads as the lit surface. */
+.a-rail {
+  background: linear-gradient(180deg, #0b0b0a 0%, #060606 100%);
+  border-right: 1px solid var(--a-border);
+}
+
+/* The wordmark cartridge, same molded amber as the commit button. */
+.a-brandmark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  background: linear-gradient(180deg, #ffd550 0%, #ffc016 46%, #ef9f0a 100%);
+  color: #1a1200;
+  font-size: 15px;
+  font-weight: 900;
+  box-shadow:
+    inset 0 1.5px 0 rgb(255 255 255 / 0.55),
+    0 2px 0 rgb(86 55 0 / 0.7),
+    0 8px 18px -10px rgb(0 0 0 / 0.9);
+}
+
+.a-nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 38px;
+  padding: 0 12px;
+  border-radius: var(--a-radius-xs);
+  color: var(--a-text-3);
+  font-size: 13.5px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  transition:
+    background-color 120ms ease-out,
+    color 120ms ease-out;
+}
+
+.a-nav-item:hover {
+  background: rgb(255 255 255 / 0.04);
+  color: var(--a-text);
+}
+
+.a-nav-item[data-active='true'] {
+  background: linear-gradient(180deg, #1c1b17 0%, #151411 100%);
+  color: var(--a-text);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05);
+}
+
+/* The active marker is an amber bar on the rail, the same cue the menu drawer uses. Rail only: the mobile
+   strip lays the same items out horizontally, where a left-edge bar lands on top of the previous tab. */
+.a-rail .a-nav-item[data-active='true']::before {
+  content: '';
+  position: absolute;
+  left: -12px;
+  top: 9px;
+  bottom: 9px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--a-accent);
+  box-shadow: 0 0 10px rgb(255 192 22 / 0.55);
+}
+
+.a-nav-item[data-active='true'] .a-nav-icon {
+  color: var(--a-accent);
+}
+
+.a-nav-icon {
+  flex: none;
+  color: var(--a-text-muted);
+  transition: color 120ms ease-out;
+}
+
+.a-nav-item:hover .a-nav-icon {
+  color: var(--a-text-2);
+}
+
+/* ── Odds and ends ─────────────────────────────────────────────────────── */
+
+.a-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  box-shadow: 0 0 8px currentColor;
+}
+
+.a-pre {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--a-text-2);
+}
+
+/* An inset block cut into a panel: stacks, briefs, anything you read as raw text. */
+.a-well {
+  background: var(--a-well);
+  border: 1px solid var(--a-border);
+  border-radius: var(--a-radius-sm);
+  padding: 10px 12px;
+}
+
+/* A callout that has to be read before something irreversible happens. Tinted, never solid. */
+.a-callout-critical {
+  border: 1px solid var(--a-critical);
+  border-radius: var(--a-radius-sm);
+  background: var(--a-critical-soft);
+  padding: 12px;
+}
+
+.a-mono {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11.5px;
+  letter-spacing: -0.01em;
+}
+
+/* The one frame that owns a shadow. */
+.a-overlay {
+  background: linear-gradient(180deg, #151513 0%, #0e0e0d 100%), #101010;
+  border: 1px solid var(--a-border-strong);
+  border-radius: var(--a-radius);
+  box-shadow: 0 24px 60px rgb(0 0 0 / 0.7);
+}
+
+/* Skeleton sweep, same recipe as the app's .shimmer. */
+.a-shimmer {
+  background: linear-gradient(
+    100deg,
+    rgb(255 255 255 / 0.03) 30%,
+    rgb(255 255 255 / 0.07) 50%,
+    rgb(255 255 255 / 0.03) 70%
+  );
+  background-size: 200% 100%;
+  border-radius: var(--a-radius-xs);
+  animation: a-shimmer 1.4s linear infinite;
+}
+
+@keyframes a-shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-admin] *,
+  [data-admin] *::before,
+  [data-admin] *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}

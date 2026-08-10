@@ -1,0 +1,48 @@
+---
+title: Payroll privacy
+description: Pro defaults to private hire + Seal roster — honest edges and public escape hatch.
+icon: Briefcase
+---
+
+# Payroll privacy
+
+Wage privacy is why orgs care. Threat-model priority: **graph > rate > amount**.
+
+## Verdict
+
+| Surface | Today |
+| --- | --- |
+| **Pro hire (default)** | **Private engagement** — amount + who↔whom + cadence inside the shielded pool |
+| **Pro hire (Public toggle)** | Cleartext treasury `Stream` — for compliance / on-chain HR pause-stop |
+| **Pro roster at rest** | **Seal-encrypted** to the org wallet — unlock with a session signature |
+| **Personal Private create** | Same private engagement stack |
+
+## Pro private hire (default)
+
+1. Add worker (hire mode **Private**) — prefer `sl1…` pay-to  
+2. **Start** → `open_engagement` + overfund/split (+ relayer when configured)  
+3. Funds come from the **org wallet**, not `treasury::withdraw`  
+4. Pause/stop are **local roster** only until private HR controls ship  
+
+## Seal roster
+
+Worker aliases, wallets, and salaries are sealed under the org address (`stream::seal_approve`). Disk never holds cleartext workers after migration to store v4. Unlock once per session.
+
+**Limit:** after unlock, plaintext lives in memory — XSS/device compromise still sees wages.
+
+## Public treasury hire (escape hatch)
+
+Explicit **Public (treasury)** mode still calls `create_stream_from_treasury_v2`:
+
+- Org, worker, salary, drips on-chain  
+- Indexer `GET /payroll?sender=` for that address  
+- Real `suspend_payroll` / `stop_payroll`
+
+## Design boundaries
+
+Private hire hides wages and the employment graph **inside** the shielded pool. Deposit and withdraw still occur at the pool edge (overfund softens exact amounts). Public treasury mode is available when you need on-chain HR controls and a clear compliance trail.
+
+## Related
+
+- [Private engagements](/docs/privacy/engagements)  
+- [Confidential amounts](/docs/privacy/amounts)  

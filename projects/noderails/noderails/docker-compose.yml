@@ -1,0 +1,42 @@
+# docker-compose.yml
+# NodeRails API server + Caddy reverse proxy
+# Database (PostgreSQL) and Redis are EXTERNAL — pass via .env or environment variables.
+# Uses host networking so containers can reach VPC resources (ElastiCache, RDS) directly.
+
+services:
+  # ── NodeRails API Server ──
+  noderails-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: noderails-server
+    restart: unless-stopped
+    network_mode: host
+    env_file: .env
+    environment:
+      # These two override .env to ensure correct values in Docker
+      - NODE_ENV=production
+      - PORT=3000
+    deploy:
+      resources:
+        limits:
+          memory: 1536M
+          cpus: "1.0"
+        reservations:
+          memory: 512M
+          cpus: "0.25"
+
+  # ── Caddy Reverse Proxy ──
+  caddy:
+    image: caddy:2-alpine
+    container_name: noderails-caddy
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

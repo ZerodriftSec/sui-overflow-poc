@@ -1,0 +1,28 @@
+---
+title: Overview
+description: Rust indexer — events to Postgres, REST + WebSocket for clients.
+icon: Database
+---
+
+# Indexer
+
+The **streamline-indexer** service watches Sui events from the StreamLine package, writes them to Postgres, and serves a read API. The app and SDK read here instead of hammering fullnode RPC for list views.
+
+Default local URL: `http://localhost:8080`  
+Override with `STREAMLINE_INDEXER_URL` / `NEXT_PUBLIC_INDEXER_URL`.
+
+## Run locally
+
+```bash
+createdb streamline
+cd backend
+DATABASE_URL=postgres://postgres@localhost:5432/streamline \
+  cargo run -p streamline-indexer
+```
+
+See the [backend README](https://github.com/minrawsjar/StreamLine/blob/main/backend/README.md) for keeper setup and env vars.
+
+<Cards>
+  <Card title="REST API" href="/docs/indexer/rest" />
+  <Card title="WebSocket" href="/docs/indexer/websocket" />
+</Cards>

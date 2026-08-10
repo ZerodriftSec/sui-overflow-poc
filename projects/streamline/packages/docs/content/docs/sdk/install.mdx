@@ -1,0 +1,43 @@
+---
+title: Install
+description: Add @streamline/sdk from the StreamLine monorepo.
+icon: Download
+---
+
+# Install
+
+The package currently lives in the monorepo as `@streamline/sdk` (private until published to npm).
+
+## From the monorepo
+
+```bash
+# repo root
+npm install
+npm run build -w @streamline/sdk
+```
+
+Workspace consumers (e.g. the frontend) depend on:
+
+```json
+{
+  "dependencies": {
+    "@streamline/sdk": "*"
+  }
+}
+```
+
+## Peer / runtime
+
+- Node **20+** (or modern browsers with bundler)
+- `@mysten/sui` **1.36** (bundled as a dependency)
+
+## Environment (optional)
+
+| Variable | Purpose |
+| --- | --- |
+| `STREAMLINE_PACKAGE_ID_TESTNET` / `NEXT_PUBLIC_PACKAGE_ID_TESTNET` | Move package id |
+| `STREAMLINE_INDEXER_URL` / `NEXT_PUBLIC_INDEXER_URL` | Indexer REST base |
+| `STREAMLINE_SUINS_DOMAIN` / `NEXT_PUBLIC_SUINS_DOMAIN` | Parent domain (`streamline.sui`) |
+| `STREAMLINE_SUI_TESTNET_RPC` / `NEXT_PUBLIC_SUI_TESTNET_RPC` | Fullnode URL |
+
+Defaults target the live **Sui testnet** deployment baked into the package.

@@ -1,0 +1,82 @@
+{
+  "network": "local",
+  "packageId": "0xfc622194842bd044b6f91819b601aec8739542a45333e8b537e8a9af45ada943",
+  "sender": "0xa51e66db55a005f44941df1b63a83703ecd9d2cedf343f7a9bee882a4e3031ca",
+  "ids": {
+    "platformId": "0x6ebb993f93c4c063f13c0ce5152a2b833c061a2f75c8dae2404df49e4122ea1a",
+    "accountId": "0xdd474a28b395081cf81a535ad2468c80b979fc7b19cfe6b98f703fa07e480010",
+    "capId": "0x717813018635f100f54a0c3688bc91d65164819581d69243f54165f4d4fb8e1f"
+  },
+  "digests": {
+    "Step 2: register_platform_with_tier": "JDD9rPZEeNLfLJ6CzaYT38YquJmmLGcZdGoEaQhuniV9",
+    "Step 3: create_account + share_account": "9n9VbuvYUrR5HNNniw4iapCcQcFJ4D6jfJ7qixHh2vbU",
+    "Step 4a: mint PUSD": "GunU7YGjzukPsWJBjogwSZHnLiyHZp6RGiYNGDSAcdbX",
+    "Step 4b: deposit PUSD": "JEE4uAu4BDhY6puivSHFXFvWbePYcYCjNbs2Te2Jxunp",
+    "Step 5: create_subscription": "G45pcSFfJqp2AmPjkx4RBTE4daW6zPDHsxpSQmER4EgJ",
+    "Step 6: process_due_payment (1st)": "4upLbcNWoix5SYqQr7PUVu3Xymk2mmxM5jQFvieDxPww",
+    "Step 7: process_due_payment (2nd)": "FAKA3A6K1giSRPTpahG4WAcKVZT4WfHWWxsrkkdYsZaw",
+    "Step 8: cancel_subscription": "82L25qb8ZR7bu3iQXnBviAWwB6d7SfZUMxZy4UfBHKgT"
+  },
+  "balanceAfter1stPayment": "4000000",
+  "balanceAfter2ndPayment": "3000000",
+  "eventCounts": {
+    "CoinTypeRegistered": 1,
+    "PlatformRegistered": 2,
+    "TierCreated": 2,
+    "AccountCreated": 1,
+    "Deposit": 1,
+    "SubscriptionCreated": 1,
+    "SubscriptionUpdated": 1,
+    "PaymentProcessed": 2,
+    "PaymentFailed": 0,
+    "DuePaymentSubmitted": 2
+  },
+  "results": [
+    {
+      "step": "Step 1: register_coin_type<PUSD>",
+      "digest": "",
+      "status": "success"
+    },
+    {
+      "step": "Step 2: register_platform_with_tier",
+      "digest": "JDD9rPZEeNLfLJ6CzaYT38YquJmmLGcZdGoEaQhuniV9",
+      "status": "success"
+    },
+    {
+      "step": "Step 3: create_account + share_account",
+      "digest": "9n9VbuvYUrR5HNNniw4iapCcQcFJ4D6jfJ7qixHh2vbU",
+      "status": "success"
+    },
+    {
+      "step": "Step 4a: mint PUSD",
+      "digest": "GunU7YGjzukPsWJBjogwSZHnLiyHZp6RGiYNGDSAcdbX",
+      "status": "success"
+    },
+    {
+      "step": "Step 4b: deposit PUSD",
+      "digest": "JEE4uAu4BDhY6puivSHFXFvWbePYcYCjNbs2Te2Jxunp",
+      "status": "success"
+    },
+    {
+      "step": "Step 5: create_subscription",
+      "digest": "G45pcSFfJqp2AmPjkx4RBTE4daW6zPDHsxpSQmER4EgJ",
+      "status": "success"
+    },
+    {
+      "step": "Step 6: process_due_payment (1st)",
+      "digest": "4upLbcNWoix5SYqQr7PUVu3Xymk2mmxM5jQFvieDxPww",
+      "status": "success"
+    },
+    {
+      "step": "Step 7: process_due_payment (2nd)",
+      "digest": "FAKA3A6K1giSRPTpahG4WAcKVZT4WfHWWxsrkkdYsZaw",
+      "status": "success"
+    },
+    {
+      "step": "Step 8: cancel_subscription",
+      "digest": "82L25qb8ZR7bu3iQXnBviAWwB6d7SfZUMxZy4UfBHKgT",
+      "status": "success"
+    }
+  ],
+  "timestamp": "2026-07-22T18:53:57.214Z"
+}

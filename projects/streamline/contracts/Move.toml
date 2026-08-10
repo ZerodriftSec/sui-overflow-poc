@@ -1,0 +1,15 @@
+[package]
+name = "streamline"
+edition = "2024.beta"
+version = "0.1.0"
+# Upgraded 2026-07-19: create_stream_v3, treasury reserve, stream::start_payroll,
+# then the `pos` module (pos::pay — payment-QR settlement into a treasury).
+# `published-at` = latest version (upgrade from); the [addresses] streamline =
+# ORIGINAL package (type origin, unchanged across upgrades).
+published-at = "0x67b337d6f054594cd983a4490a5f346900caf09db0e334d349b2a9babcbd2811"
+
+# The Sui / MoveStdlib framework dependencies are managed automatically by the
+# Sui CLI, pinned to the active environment's framework version.
+
+[addresses]
+streamline = "0x597f34fee3b246cbabdb8b8133c4b5e7aa5a15899e74df40acf61080b776a794"

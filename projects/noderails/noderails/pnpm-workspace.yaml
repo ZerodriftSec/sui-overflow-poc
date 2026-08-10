@@ -1,0 +1,7 @@
+packages:
+  - "packages/*"
+  - "services/*"
+  - "apps/*"
+  - "!apps/buy-me-coffee"
+  - "noderails-solana"
+  - "noderails-sui"

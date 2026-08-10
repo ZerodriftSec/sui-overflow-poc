@@ -1,0 +1,9 @@
+[package]
+name = "noderails_escrow"
+edition = "2024.beta"
+
+[dependencies]
+Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "framework/mainnet" }
+
+[addresses]
+noderails_escrow = "0x0"

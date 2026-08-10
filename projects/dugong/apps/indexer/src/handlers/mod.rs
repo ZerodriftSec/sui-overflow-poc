@@ -1,0 +1,25 @@
+pub mod account_created;
+pub mod bet_placed;
+pub mod coin_deposited;
+pub mod coin_transferred;
+pub mod coin_withdrawn;
+pub mod handle_updated;
+pub mod market_created;
+pub mod market_resolved;
+pub mod market_winner_paid;
+pub mod reward_campaign_claimed;
+pub mod reward_campaign_created;
+pub mod reward_campaign_resolved;
+pub mod wallet_linked;
+
+use anyhow::Result;
+use async_trait::async_trait;
+use sqlx::PgPool;
+
+use crate::types::SuiEvent;
+
+/// Trait for event handlers
+#[async_trait]
+pub trait EventHandler {
+    async fn handle(pool: &PgPool, event: &SuiEvent) -> Result<()>;
+}

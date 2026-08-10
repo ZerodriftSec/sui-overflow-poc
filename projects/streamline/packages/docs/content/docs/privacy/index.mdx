@@ -1,0 +1,50 @@
+---
+title: Overview
+description: Privacy is a product pillar — default private engagements, honest boundaries.
+icon: Shield
+---
+
+# Privacy
+
+Most payment rails treat privacy as an afterthought: cleartext invoices, public ledgers that read like a payroll dump, and “optional” mixing that nobody enables under deadline pressure.
+
+StreamLine takes the opposite stance. **Privacy is a first-class mode of the protocol.** The default create path is a **private engagement** — amount, who↔whom, and drip cadence stay inside a shielded pool. Compatibility modes still exist when you need milestones, dispute, or DeFi on a named stream.
+
+## The four layers
+
+| Layer | What stays private | How |
+| --- | --- | --- |
+| **Identity** | Link from payment to a seed phrase / exchange KYC trail | [zkLogin](/docs/privacy/identity) — Google → fresh Sui address, sponsored gas |
+| **Private engagements (default)** | Amount + who↔whom + drip cadence *inside* the pool | [Private engagements](/docs/privacy/engagements) — notes + `private_settle` |
+| **Amounts-only (compat)** | Totals, remaining, earned, drip sizes | [Confidential amounts](/docs/privacy/amounts) — Poseidon + Groth16 + Seal; **parties still public** |
+| **Metadata** | Briefs, terms, deliverables | [Seal](/docs/privacy/metadata) — threshold encryption gated by on-chain policy (Walrus for large blobs = rolling out) |
+
+Public streams still exist when transparency or DeFi composability is the point (open payroll demos, borrow, yield splits). **Pro treasury hire is public today** — see [Payroll privacy](/docs/privacy/payroll).
+
+## Design principles
+
+1. **Selective disclosure** — The chain enforces rules without broadcasting every number.
+2. **Two-party readability** — Parties decrypt openings locally (Seal or ECIES); indexers never hold plaintext balances.
+3. **Proof, not trust** — Moves that change confidential value carry **zero-knowledge proofs** verified natively on Sui (`sui::groth16`).
+4. **Honest edges** — Deposit and withdraw reveal amount at the anonymity-set boundary — same tradeoff as every shielded pool. Default **overfund + private split** makes the edge a round bucket ≠ the work amount.
+5. **Don’t conflate Pro with private** — Org hire from treasury is cleartext until a shielded funding path ships.
+
+## What observers still see
+
+| Mode | Observer typically sees |
+| --- | --- |
+| **Private engagement** | Round(ish) value entered/left the pool; unlinkable settle events; with **privacy relayer**, pool ops’ **senders** are the relayer (edge amounts + two-step fund timing still leak) |
+| **Amounts-only stream** | Stream exists, **sender & freelancer addresses**, milestone indices / drip timestamps; **not** the dollar amounts in commitments (reserve size may still be observable) |
+| **Public stream / Pro hire** | Everything in cleartext — including indexer `/payroll` for that org |
+
+That split is intentional. Do not pitch “invisible payroll” for amounts-only **or** for Pro hire.
+
+## Where to go next
+
+<Cards>
+  <Card title="Private engagements" href="/docs/privacy/engagements" description="Default — amount + graph + no drip clock" />
+  <Card title="Payroll privacy" href="/docs/privacy/payroll" description="Wage threat model — Pro vs max private path" />
+  <Card title="Confidential amounts" href="/docs/privacy/amounts" description="Compat — Groth16 · Poseidon · Seal" />
+  <Card title="Identity" href="/docs/privacy/identity" description="zkLogin · gasless · seedless" />
+  <Card title="Encrypted metadata" href="/docs/privacy/metadata" description="Seal policy · Walrus blobs" />
+</Cards>

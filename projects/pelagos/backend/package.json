@@ -1,0 +1,42 @@
+{
+  "name": "pelagos-backend",
+  "version": "1.0.0",
+  "description": "Pelagos - Structured Prediction Market Products on Sui - Backend API",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch --tsconfig ./tsconfig.dev.json src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "start:prod": "node dist/index.js",
+    "seed": "tsx src/scripts/seed.ts",
+    "setup": "tsx src/scripts/setup.ts",
+    "test:api": "tsx src/scripts/test-api.ts",
+    "verify:predict": "tsx --tsconfig ./tsconfig.dev.json src/scripts/verify-predict.ts",
+    "deploy:predict-managed": "tsx --tsconfig ./tsconfig.dev.json src/scripts/deploy-managed-predict.ts",
+    "feed:predict": "tsx --tsconfig ./tsconfig.dev.json src/scripts/push-predict-feed.ts",
+    "audit:predict-managed": "tsx --tsconfig ./tsconfig.dev.json src/scripts/audit-managed-predict-e2e.ts",
+    "check:demo": "tsx --tsconfig ./tsconfig.dev.json src/scripts/check-demo-readiness.ts",
+    "write:predict": "tsx --tsconfig ./tsconfig.dev.json src/scripts/write-flow-predict.ts",
+    "test:buttons": "tsx --tsconfig ./tsconfig.dev.json src/scripts/test-buttons.ts",
+    "test:structured": "tsx --tsconfig ./tsconfig.dev.json src/scripts/test-structured-products.ts",
+    "test:yield-notes": "tsx --tsconfig ./tsconfig.dev.json src/scripts/test-yield-notes.ts",
+    "audit:yield-notes": "tsx --tsconfig ./tsconfig.dev.json src/scripts/audit-yield-notes-e2e.ts"
+  },
+  "dependencies": {
+    "@mysten/sui": "^2.17.0",
+    "@supabase/supabase-js": "^2.49.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.22.2",
+    "express-rate-limit": "^7.5.1",
+    "node-cron": "^4.6.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^4.17.25",
+    "@types/node": "^22.19.17",
+    "tsx": "^4.23.1",
+    "typescript": "^5.9.3"
+  }
+}

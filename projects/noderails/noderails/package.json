@@ -1,0 +1,38 @@
+{
+  "name": "noderails",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Crypto payment infrastructure platform",
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev --ui stream",
+    "dev:concurrently": "concurrently -k -p \"{name}\" -c \"bgBlue,bgGreen,bgMagenta,bgCyan,bgRed\" -n server,dashboard,payment-ui,landing,admin \"pnpm --filter @noderails/server dev\" \"pnpm --filter @noderails/dashboard dev\" \"pnpm --filter @noderails/payment-ui dev\" \"pnpm --filter @noderails/landing dev\" \"pnpm --filter @noderails/admin dev\"",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "clean": "turbo run clean && rm -rf node_modules",
+    "queue:clear": "node --env-file=.env scripts/clear-bullmq.mjs",
+    "db:generate": "pnpm --filter @noderails/database generate",
+    "db:push": "pnpm --filter @noderails/database push",
+    "db:migrate": "pnpm --filter @noderails/database migrate",
+    "db:migrate:deploy": "pnpm --filter @noderails/database migrate:deploy",
+    "db:studio": "pnpm --filter @noderails/database studio",
+    "db:reset": "pnpm --filter @noderails/database reset",
+    "deploy:solana:devnet": "pnpm --filter @noderails/anchor-deploy deploy:devnet",
+    "deploy:solana:mainnet": "pnpm --filter @noderails/anchor-deploy deploy:mainnet",
+    "deploy:sui:devnet": "pnpm --filter @noderails/sui-deploy deploy:devnet",
+    "deploy:sui:testnet": "pnpm --filter @noderails/sui-deploy deploy:testnet",
+    "deploy:sui:mainnet": "pnpm --filter @noderails/sui-deploy deploy:mainnet"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "turbo": "^2.0.0",
+    "typescript": "^5.4.0"
+  },
+  "packageManager": "pnpm@9.0.0",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "ioredis": "^5.4.0"
+  }
+}

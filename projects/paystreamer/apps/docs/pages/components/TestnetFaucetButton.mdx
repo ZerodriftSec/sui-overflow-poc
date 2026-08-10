@@ -1,0 +1,41 @@
+import { TestnetFaucetButton } from '@paystreamer/sdk/ui';
+import { DocsDemoWrapper } from '../../components/DocsDemoWrapper';
+
+export const LiveButton = () => {
+  return (
+    <DocsDemoWrapper>
+      <TestnetFaucetButton 
+        onSuccess={(digest) => alert('Minted PUSD! Digest: ' + digest)}
+        onError={(err) => alert('Mint failed: ' + err)}
+      />
+    </DocsDemoWrapper>
+  );
+};
+
+# TestnetFaucetButton
+
+The `TestnetFaucetButton` is a pre-built UI component that wraps the `useMintTestPusd` hook. It renders a styled button that users can click to instantly mint testnet PUSD to their connected wallet.
+
+<LiveButton />
+
+## Usage
+
+```tsx
+import { TestnetFaucetButton } from "@paystreamer/sdk/ui";
+
+<TestnetFaucetButton 
+  amountMist={100000000000n} // 100 PUSD
+  onSuccess={(digest) => console.log('Minted:', digest)}
+  onError={(err) => console.error('Mint failed:', err)}
+/>
+```
+
+## Props
+
+| Prop | Type | Description |
+|------|------|-------------|
+| `amountMist?` | `bigint` | The amount of PUSD (in MIST units) to mint. Defaults to `100_000_000_000n` (100 PUSD). |
+| `onSuccess?` | `(digest: string) => void` | Callback fired when the minting transaction completes successfully. |
+| `onError?` | `(error: string) => void` | Callback fired if the minting transaction fails. |
+| `containerClassName?` | `string` | Custom CSS classes to apply to the wrapper div. |
+| `className?` | `string` | Custom CSS classes to apply directly to the button element. |

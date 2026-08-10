@@ -1,0 +1,39 @@
+---
+title: Overview
+description: Narrow TypeScript SDK for agents — resolve handles, create streams, read the indexer.
+icon: Code
+---
+
+# @streamline/sdk
+
+A **narrow** headless client for StreamLine. It proves the product claim from the landing scene: machines pay by name, not hex.
+
+```ts
+import { StreamLine } from "@streamline/sdk";
+
+await sl.stream.to("alice@streamline", {
+  amountUsdc: 100,
+  durationDays: 14,
+});
+```
+
+## Scope (v1)
+
+| In | Out |
+| --- | --- |
+| `resolve(handle \| address)` | Claim handle |
+| `stream.to(...)` → `create_stream_v2` | Raise / approve / cancel |
+| `streams.get` / `streams.list` | Vault, treasury, lending |
+| Keypair + sponsor HTTP adapters | React hooks, Next routes |
+| Network package / USDC config | Confidential / shielded |
+
+The phone and Pro apps stay the human surface. The SDK shares create-stream builders and resolve logic with the frontend so they do not drift.
+
+## Next
+
+<Cards>
+  <Card title="Install" href="/docs/sdk/install" />
+  <Card title="Quickstart" href="/docs/sdk/quickstart" />
+  <Card title="API reference" href="/docs/sdk/api" />
+  <Card title="Gas sponsorship" href="/docs/sdk/sponsorship" />
+</Cards>

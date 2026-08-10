@@ -1,0 +1,14 @@
+{
+  "name": "streamline",
+  "private": true,
+  "workspaces": [
+    "packages/sdk",
+    "packages/docs",
+    "frontend"
+  ],
+  "scripts": {
+    "build:sdk": "npm run build -w @streamline/sdk",
+    "dev:docs": "npm run dev -w @streamline/docs",
+    "build:docs": "npm run build -w @streamline/docs"
+  }
+}

@@ -1,0 +1,51 @@
+---
+title: Borrowing
+description: Turn a dripping stream into working capital — borrow against present value.
+icon: Banknote
+---
+
+# Borrowing
+
+A `DRIPPING` stream is not just a payment schedule — it is **guaranteed future income** with rules enforced on-chain. StreamLine lets the recipient borrow against that present value today, without selling the stream or waiting for every drip.
+
+## How stream-backed credit works
+
+1. **Present value** — Roughly remaining balance × a conservative factor (protocol uses ~90% of remaining as borrowable PV).
+2. **Borrow** — Against a live stream, draw principal up to PV (and pool liquidity). Receive USDC now plus a non-transferable `LoanReceipt`.
+3. **Repay** — Return principal plus borrow-APR interest; unlock the receipt.
+
+```
+DRIPPING stream ──► present_value(remaining)
+                         │
+                         ▼
+              LendingPool::borrow ≤ PV
+                         │
+              cash now + LoanReceipt
+                         │
+              later: repay(principal + interest)
+```
+
+No marketplace middleman. The Move package asserts LTV and liquidity; illegal borrows abort.
+
+## Who it is for
+
+- **Freelancers** — Bridge a big invoice while milstones drip in.
+- **Teams** — Smooth operating cash when client streams are live but not fully paid.
+- **Agents** — Capitalize a strategy that is already earning on-chain (roadmap: more automation around repay).
+
+## Safety rails
+
+| Guard | Behavior |
+| --- | --- |
+| LTV cap | `principal ≤ present_value` |
+| Pool liquidity | Cannot borrow more than the pool holds |
+| Receipt binding | Loan is tied to the stream / borrower identity model |
+| Interest | Borrow APR accrues until repay (testnet pool demo rate) |
+
+## Roadmap texture
+
+The protocol already records direction for **auto-repay from drips** — routing incoming settlement into an open loan so streams pay themselves down. Enforcement is the next operational layer; the economic story is already clear: income and credit on one object.
+
+## In the product
+
+Open **Borrow against stream** from the user / phone flows when you have a dripping stream and pool liquidity. Pair with [yield](/docs/finance/yield) when you want earned drips to compound while a loan covers near-term cash needs.

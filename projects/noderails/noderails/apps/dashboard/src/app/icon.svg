@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="16 16 296 296" fill="none" aria-hidden="true">
+  <defs>
+    <linearGradient id="nr-fav-grad" x1="20" y1="20" x2="300" y2="300" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0EA5E9"/>
+      <stop offset="0.5" stop-color="#2563EB"/>
+      <stop offset="1" stop-color="#1D4ED8"/>
+    </linearGradient>
+    <linearGradient id="rail-fav-grad" x1="80" y1="86" x2="248" y2="234" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.98"/>
+      <stop offset="1" stop-color="#DBEAFE" stop-opacity="0.9"/>
+    </linearGradient>
+    <filter id="nr-fav-shadow" x="-8" y="-8" width="360" height="360" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#1E3A8A" flood-opacity="0.25"/>
+    </filter>
+  </defs>
+  <g filter="url(#nr-fav-shadow)">
+    <rect x="24" y="24" width="272" height="272" rx="64" fill="url(#nr-fav-grad)"/>
+    <rect x="72" y="84" width="176" height="26" rx="13" fill="url(#rail-fav-grad)"/>
+    <rect x="72" y="146" width="176" height="26" rx="13" fill="url(#rail-fav-grad)"/>
+    <rect x="72" y="208" width="176" height="26" rx="13" fill="url(#rail-fav-grad)"/>
+    <circle cx="100" cy="97" r="7" fill="#1D4ED8"/>
+    <circle cx="156" cy="97" r="7" fill="#1D4ED8"/>
+    <circle cx="212" cy="97" r="7" fill="#1D4ED8"/>
+    <circle cx="100" cy="159" r="7" fill="#1D4ED8"/>
+    <circle cx="156" cy="159" r="7" fill="#1D4ED8"/>
+    <circle cx="212" cy="159" r="7" fill="#1D4ED8"/>
+    <circle cx="100" cy="221" r="7" fill="#1D4ED8"/>
+    <circle cx="156" cy="221" r="7" fill="#1D4ED8"/>
+    <circle cx="212" cy="221" r="7" fill="#1D4ED8"/>
+  </g>
+</svg>

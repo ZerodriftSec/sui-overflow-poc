@@ -1,0 +1,7 @@
+[package]
+name = "mock_usdc"
+edition = "2024.beta"
+version = "0.1.0"
+
+[addresses]
+mock_usdc = "0x0"

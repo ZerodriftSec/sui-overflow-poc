@@ -1,0 +1,588 @@
+import { Router, Request, Response } from 'express';
+import {
+  getBundleById,
+  createPosition,
+  createTransaction,
+  getTransactionBySignature,
+  getTransactionsByWallet,
+  getPPNVaultsForLedger,
+} from '../db/queries';
+
+/** Classify a prepare/build error into the right HTTP status. */
+function statusForError(message: string): number {
+  if (/insufficient/i.test(message)) return 400;
+  if (/no (redeemable )?vault positions|not found/i.test(message)) return 404;
+  // Deliberate rail guards (a ppn/sim share routed to the wrong redeem path) are a
+  // client error, not a server fault — surface as 403, not 500.
+  if (/redeem via \/api\/|settle via \/api\/|not this rail/i.test(message)) return 403;
+  return 500;
+}
+
+/**
+ * The on-chain event's owner must match the wallet claiming the deposit/redeem.
+ * Fails CLOSED: a falsy/empty wallet, or an event with no owner, is treated as a
+ * mismatch. A real vault Deposited/Redeemed event ALWAYS carries an owner, so an
+ * absent owner means the digest isn't a vault deposit/redeem for this wallet —
+ * reject rather than let a falsy wallet short-circuit the check to "no mismatch".
+ */
+function ownerMismatch(event: Record<string, unknown> | undefined, wallet: string | undefined): boolean {
+  if (!wallet || typeof wallet !== 'string' || !wallet.trim()) return true; // falsy/empty wallet => mismatch
+  const owner = (event?.owner as string | undefined)?.toLowerCase();
+  if (!owner) return true; // vault events always carry an owner; absence => reject
+  return owner !== wallet.toLowerCase();
+}
+
+/** Decode the on-chain VaultShare label (vector<u8>) the deposit was tagged with. */
+function eventLabel(event: Record<string, unknown> | undefined): string | null {
+  const raw = event?.label;
+  if (Array.isArray(raw)) return Buffer.from(raw as number[]).toString("utf8");
+  if (typeof raw === "string") return raw;
+  return null;
+}
+import { supabase } from '../db/supabase';
+import {
+  prepareDeposit,
+  prepareRedeem,
+  confirmDigest,
+  readVaultState,
+  listShares,
+  vaultConfigured,
+  VAULT,
+} from '../services/vault';
+import { resolveVault } from '../services/vault/config';
+import { validate, depositSchema, redeemSchema } from '../utils/validation';
+import { z } from 'zod';
+
+const router = Router();
+
+// Canonical 0x-prefixed Sui address (exactly 64 hex chars after 0x); mirrors
+// utils/validation's suiAddress so a falsy/empty/short wallet_address is rejected
+// with a clean 400 BEFORE the confirm handler runs — belt-and-suspenders with the
+// fail-closed ownerMismatch.
+const confirmAddress = z
+  .string()
+  .regex(/^0x[0-9a-fA-F]{64}$/, 'wallet_address must be a 0x-prefixed 64-hex Sui address');
+
+// Validate /confirm bodies. The frontend-supplied economics (tokens_minted/
+// issue_price/fee_usdc) are advisory only — they're re-derived from the on-chain
+// event in the handler — so they stay optional, but the binding fields are required.
+const confirmSchema = z.object({
+  bundle_id: z.string().min(1).max(128),
+  wallet_address: confirmAddress,
+  signature: z.string().min(1),
+  amount_usdc: z.number().nonnegative().max(1_000_000).optional(),
+  tokens_minted: z.number().optional(),
+  issue_price: z.number().optional(),
+  fee_usdc: z.number().optional(),
+  currency: z.enum(['mUSDC', 'dUSDC']).optional(),
+});
+
+// Same binding fields as deposit confirm, minus the deposit-only economics.
+const redeemConfirmSchema = z.object({
+  bundle_id: z.string().min(1).max(128),
+  wallet_address: confirmAddress,
+  signature: z.string().min(1),
+  currency: z.enum(['mUSDC', 'dUSDC']).optional(),
+});
+
+function notConfigured(res: Response) {
+  return res
+    .status(503)
+    .json({ error: 'On-chain vault not configured (set VAULT_PACKAGE_ID + VAULT_OBJECT_ID).' });
+}
+
+/**
+ * Build a REAL, signable deposit transaction against the on-chain vault. The
+ * wallet signs `tx_bytes`; the backend never custodies funds. Works without
+ * Supabase — the bundle id is just a label on the share receipt.
+ */
+async function prepareDepositHandler(req: Request, res: Response) {
+  try {
+    const { bundle_id, wallet_address, amount_usdc, currency } = req.body as {
+      bundle_id: string;
+      wallet_address: string;
+      amount_usdc: number;
+      currency?: 'mUSDC' | 'dUSDC';
+    };
+    const ccy: 'mUSDC' | 'dUSDC' = currency === 'dUSDC' ? 'dUSDC' : 'mUSDC';
+    if (!vaultConfigured(ccy)) return notConfigured(res);
+
+    const prep = await prepareDeposit({
+      owner: wallet_address,
+      amount_usdc,
+      label: bundle_id,
+      currency: ccy,
+    });
+
+    res.status(200).json({
+      kind: 'prepared',
+      bundle_id,
+      wallet_address,
+      amount_usdc,
+      fee_usdc: prep.economics.fee_usdc,
+      net_usdc: prep.economics.net_usdc,
+      issue_price: prep.economics.share_price,
+      tokens_minted: prep.economics.expected_shares,
+      expected_tokens: prep.economics.expected_shares,
+      deposit_fee_bps: prep.economics.deposit_fee_bps,
+      sui_market_id: prep.vault_id,
+      sui_pool_id: prep.vault_id,
+      sui_receipt_type: prep.share_type,
+      // The actual on-chain transaction for the wallet to sign + execute:
+      tx_bytes: prep.tx_bytes,
+      sender: prep.sender,
+      dry_run: prep.dry_run,
+    });
+  } catch (err) {
+    const msg = (err as Error).message;
+    console.error('POST /api/deposit/prepare error:', msg);
+    res.status(statusForError(msg)).json({ error: `Failed to prepare deposit: ${msg}` });
+  }
+}
+
+router.post('/prepare', validate(depositSchema), prepareDepositHandler);
+router.post('/', validate(depositSchema), prepareDepositHandler);
+
+router.get('/vault-price/:bundleId', async (req: Request, res: Response) => {
+  try {
+    if (!vaultConfigured()) return notConfigured(res);
+    const state = await readVaultState();
+    res.json({
+      bundle_id: req.params.bundleId,
+      vault_id: VAULT.vaultObjectId,
+      issue_price: state.share_price,
+      fee_bps: state.deposit_fee_bps,
+      redeem_fee_bps: state.redeem_fee_bps,
+      total_assets_usdc: Number(state.total_assets_raw) / 10 ** VAULT.usdcDecimals,
+      total_shares: Number(state.total_shares) / 10 ** VAULT.usdcDecimals,
+      vault_state: 'active',
+    });
+  } catch (err) {
+    res.status(500).json({ error: `Failed to fetch vault price: ${(err as Error).message}` });
+  }
+});
+
+router.get('/vault-prices', async (_req: Request, res: Response) => {
+  try {
+    if (!vaultConfigured()) return res.json({ count: 0, prices: [] });
+    const state = await readVaultState();
+    res.json({
+      count: 1,
+      prices: [
+        {
+          bundle_id: 'pelagos-vault',
+          bundle_name: 'Pelagos Vault (MOCK_USDC)',
+          vault_id: VAULT.vaultObjectId,
+          issue_price: state.share_price,
+          fee_bps: state.deposit_fee_bps,
+          total_assets_usdc: Number(state.total_assets_raw) / 10 ** VAULT.usdcDecimals,
+        },
+      ],
+    });
+  } catch (err) {
+    res.status(500).json({ error: `Failed to fetch vault prices: ${(err as Error).message}` });
+  }
+});
+
+router.post('/confirm', validate(confirmSchema), async (req: Request, res: Response) => {
+  try {
+    const { bundle_id, wallet_address, amount_usdc, signature, tokens_minted, issue_price, fee_usdc, currency } =
+      req.body as {
+        bundle_id: string;
+        wallet_address: string;
+        amount_usdc?: number;
+        signature: string;
+        tokens_minted?: number;
+        issue_price?: number;
+        fee_usdc?: number;
+        currency?: 'mUSDC' | 'dUSDC';
+      };
+    if (!signature) return res.status(400).json({ error: 'signature (tx digest) required' });
+
+    const c = await confirmDigest(signature, wallet_address);
+    if (!c.ok) {
+      return res.status(400).json({ error: `Sui transaction not confirmed: ${c.status}`, ...c });
+    }
+    // Owner-binding: reject a real digest claimed by the wrong wallet.
+    if (ownerMismatch(c.event, wallet_address)) {
+      return res
+        .status(400)
+        .json({ error: 'Digest owner does not match wallet_address', event_owner: c.event?.owner });
+    }
+    // Bundle-binding: the on-chain deposit label must match the claimed bundle
+    // so a digest can't be attributed to the wrong basket. A legitimate vault
+    // deposit ALWAYS carries the bundle label, so a missing/unreadable label means
+    // the digest is not a deposit for this bundle (e.g. an unrelated transfer
+    // pointed at /confirm to fabricate a History/position row) — reject it.
+    const label = eventLabel(c.event);
+    if (label === null) {
+      return res
+        .status(400)
+        .json({ error: 'On-chain transaction has no vault deposit label; cannot bind to bundle_id' });
+    }
+    if (label !== bundle_id) {
+      return res
+        .status(400)
+        .json({ error: 'Digest bundle label does not match bundle_id', event_label: label });
+    }
+
+    // Re-derive the persisted economics from the authoritative on-chain Deposited
+    // event (vault.move emits raw u64 `shares`/`fee`/`gross` in smallest units) so
+    // the History/audit trail reflects chain truth — the frontend advisory fields
+    // (tokens_minted/issue_price/fee_usdc/amount_usdc) are only a fallback when the
+    // event is absent, removing the client's ability to influence logged values.
+    const ccy: 'mUSDC' | 'dUSDC' = currency === 'dUSDC' ? 'dUSDC' : 'mUSDC';
+    const dec = 10 ** resolveVault(ccy).usdcDecimals;
+    const ev = c.event as { shares?: string | number; fee?: string | number; gross?: string | number } | undefined;
+    const onchainTokens = ev?.shares != null ? Number(ev.shares) / dec : (tokens_minted ?? 0);
+    const onchainFee = ev?.fee != null ? Number(ev.fee) / dec : (fee_usdc ?? 0);
+    // Gross deposited = the event's `gross` (smallest units); fall back to the
+    // body amount only when the event is missing.
+    const onchainGross = ev?.gross != null ? Number(ev.gross) / dec : (amount_usdc ?? 0);
+    // Entry price = gross/shares (NAV at deposit); fall back to client issue_price.
+    const onchainIssuePrice = onchainTokens > 0 ? onchainGross / onchainTokens : (issue_price ?? 1);
+
+    // Idempotency: a digest already recorded returns the existing row unchanged.
+    const existing = await getTransactionBySignature(signature).catch(() => null);
+    if (existing) {
+      return res.status(200).json({
+        confirmed: true,
+        idempotent: true,
+        digest: signature,
+        explorer_url: c.explorer_url,
+        event: c.event,
+        transaction_id: existing.id,
+        bundle_id,
+      });
+    }
+
+    // Best-effort off-chain indexing (no-op if Supabase is unconfigured).
+    let transactionId: string | null = null;
+    try {
+      const position = await createPosition({
+        bundle_id,
+        wallet_address,
+        tokens_held: onchainTokens,
+        entry_price: onchainIssuePrice,
+        deposited_usdc: onchainGross,
+      });
+      const transaction = await createTransaction({
+        bundle_id,
+        wallet_address,
+        type: 'deposit',
+        amount_usdc: onchainGross,
+        tokens: onchainTokens,
+        fee_usdc: onchainFee,
+        tx_signature: signature,
+      });
+      transactionId = transaction?.id ?? null;
+      if (transaction) {
+        await supabase
+          .from('transactions')
+          .update({ onchain_tx_signature: signature })
+          .eq('id', transaction.id);
+      }
+      void position;
+    } catch {
+      /* indexing optional */
+    }
+
+    res.status(201).json({
+      confirmed: true,
+      digest: signature,
+      explorer_url: c.explorer_url,
+      event: c.event,
+      transaction_id: transactionId,
+      bundle_id,
+      // Return the on-chain-derived economics (chain truth), not the client advisory.
+      tokens_minted: onchainTokens,
+      issue_price: onchainIssuePrice,
+      fee_usdc: onchainFee,
+    });
+  } catch (err) {
+    console.error('POST /api/deposit/confirm error:', err);
+    res.status(500).json({ error: `Failed to confirm deposit: ${(err as Error).message}` });
+  }
+});
+
+router.post('/redeem/prepare', validate(redeemSchema), async (req: Request, res: Response) => {
+  try {
+    if (!vaultConfigured()) return notConfigured(res);
+    const { bundle_id, wallet_address } = req.body as { bundle_id: string; wallet_address: string };
+    const prep = await prepareRedeem({ owner: wallet_address, label: bundle_id });
+    res.status(200).json({
+      kind: 'prepared',
+      bundle_id,
+      wallet_address,
+      share_id: prep.share_id,
+      total_tokens: prep.economics.shares,
+      expected_usdc: prep.economics.net_usdc,
+      gross_usdc: prep.economics.gross_usdc,
+      exit_fee_usdc: prep.economics.fee_usdc,
+      redeem_kind: 'active_early',
+      sui_market_id: prep.vault_id,
+      sui_pool_id: prep.vault_id,
+      tx_bytes: prep.tx_bytes,
+      sender: prep.sender,
+      dry_run: prep.dry_run,
+    });
+  } catch (err) {
+    const msg = (err as Error).message;
+    console.error('POST /api/deposit/redeem/prepare error:', msg);
+    res.status(statusForError(msg)).json({ error: `Failed to prepare redeem: ${msg}` });
+  }
+});
+
+router.post('/redeem/confirm', validate(redeemConfirmSchema), async (req: Request, res: Response) => {
+  try {
+    const { bundle_id, wallet_address, signature, currency } = req.body as {
+      bundle_id: string;
+      wallet_address: string;
+      signature: string;
+      currency?: 'mUSDC' | 'dUSDC';
+    };
+    if (!signature) return res.status(400).json({ error: 'signature (tx digest) required' });
+
+    // Thread the settlement rail so the owner-payout delta is read against the
+    // right coin (and decimals). Absent currency => infer from the share type /
+    // default to mUSDC, preserving prior behavior.
+    const ccy: 'mUSDC' | 'dUSDC' | undefined = currency === 'dUSDC' ? 'dUSDC' : currency === 'mUSDC' ? 'mUSDC' : undefined;
+    const c = await confirmDigest(signature, wallet_address, ccy);
+    if (!c.ok) {
+      return res.status(400).json({ error: `Sui transaction not confirmed: ${c.status}`, ...c });
+    }
+    if (ownerMismatch(c.event, wallet_address)) {
+      return res
+        .status(400)
+        .json({ error: 'Digest owner does not match wallet_address', event_owner: c.event?.owner });
+    }
+    const existingRedeem = await getTransactionBySignature(signature).catch(() => null);
+    if (existingRedeem) {
+      return res.status(200).json({
+        confirmed: true,
+        idempotent: true,
+        digest: signature,
+        explorer_url: c.explorer_url,
+        bundle_id,
+        wallet_address,
+        payout_usdc: c.usdc_delta ?? null,
+        transaction_id: existingRedeem.id,
+      });
+    }
+
+    // Record the REAL exit fee in the ledger. PREFER the authoritative on-chain
+    // Redeemed event, which emits `fee` in smallest units (vault.move) — that is
+    // bit-for-bit the amount the vault floored and skimmed, so the recorded ledger
+    // fee equals the on-chain charge exactly. Only if the event is absent do we
+    // fall back to RE-DERIVING from redeem_fee_bps (gross = net / (1 − r), so
+    // fee = net · r / (1 − r)), which can drift by 1 smallest unit (1e-6 USDC).
+    let exitFeeUsdc = 0;
+    const evFee = (c.event as { fee?: string | number } | undefined)?.fee;
+    if (evFee != null) {
+      const decimals = resolveVault(ccy ?? 'mUSDC').usdcDecimals;
+      exitFeeUsdc = Number(BigInt(evFee as string)) / 10 ** decimals;
+    } else {
+      try {
+        const st = await readVaultState(resolveVault(ccy ?? 'mUSDC'));
+        const r = (st?.redeem_fee_bps ?? 0) / 10_000;
+        const net = c.usdc_delta ?? 0;
+        if (r > 0 && r < 1 && net > 0) exitFeeUsdc = (net * r) / (1 - r);
+      } catch {
+        /* fee derivation best-effort; fall back to 0 */
+      }
+    }
+
+    let transactionId: string | null = null;
+    try {
+      const tx = await createTransaction({
+        bundle_id,
+        wallet_address,
+        type: 'redemption',
+        amount_usdc: c.usdc_delta ?? 0,
+        tokens: 0,
+        fee_usdc: exitFeeUsdc,
+        tx_signature: signature,
+      });
+      transactionId = tx?.id ?? null;
+    } catch {
+      /* indexing optional */
+    }
+
+    res.status(200).json({
+      confirmed: true,
+      digest: signature,
+      explorer_url: c.explorer_url,
+      bundle_id,
+      wallet_address,
+      payout_usdc: c.usdc_delta ?? null,
+      exit_fee_usdc: exitFeeUsdc,
+      event: c.event,
+      transaction_id: transactionId,
+    });
+  } catch (err) {
+    console.error('POST /api/deposit/redeem/confirm error:', err);
+    res.status(500).json({ error: `Failed to confirm redeem: ${(err as Error).message}` });
+  }
+});
+
+router.post('/redeem', validate(redeemSchema), async (req: Request, res: Response) => {
+  // Alias: redeem == redeem/prepare (build the signable tx).
+  try {
+    if (!vaultConfigured()) return notConfigured(res);
+    const { bundle_id, wallet_address } = req.body as { bundle_id: string; wallet_address: string };
+    const prep = await prepareRedeem({ owner: wallet_address, label: bundle_id });
+    res.status(200).json({
+      kind: 'prepared',
+      bundle_id,
+      wallet_address,
+      share_id: prep.share_id,
+      total_tokens: prep.economics.shares,
+      expected_usdc: prep.economics.net_usdc,
+      exit_fee_usdc: prep.economics.fee_usdc,
+      tx_bytes: prep.tx_bytes,
+      sender: prep.sender,
+      dry_run: prep.dry_run,
+    });
+  } catch (err) {
+    const msg = (err as Error).message;
+    // Same status mapping as /redeem/prepare so the alias surfaces ppn/sim rail
+    // guards as 403 and "no redeemable position" as 404 instead of a blanket 500.
+    res.status(statusForError(msg)).json({ error: `Failed to prepare redeem: ${msg}` });
+  }
+});
+
+/** Live on-chain portfolio: the wallet's real VaultShare receipts, valued at the
+ *  live share price. */
+router.get('/portfolio/:walletAddress', async (req: Request, res: Response) => {
+  try {
+    const { walletAddress } = req.params;
+    // Reject malformed addresses before any Sui RPC so a bad param returns a
+    // clean 400 instead of a raw RPC-driven 500. A canonical Sui address is
+    // 0x + exactly 64 hex chars; a regex that allowed 1..64 chars let through
+    // short-but-hex inputs (e.g. 0x123) that the listShares RPC then rejected
+    // with "Invalid params", crashing to a 500. Require the full-length form.
+    if (!/^0x[0-9a-fA-F]{64}$/.test(walletAddress)) {
+      return res.status(400).json({ error: 'invalid address' });
+    }
+    if (!vaultConfigured('mUSDC') && !vaultConfigured('dUSDC')) {
+      return res.json({ wallet_address: walletAddress, positions: [], total_value: 0, total_pnl: 0 });
+    }
+    // Read mUSDC state always and dUSDC state only when that rail is configured.
+    // listShares returns receipts from BOTH rails tagged with .currency, so each
+    // position must be valued at its OWN rail's share price.
+    const [musdcState, dusdcState, shares] = await Promise.all([
+      readVaultState(),
+      vaultConfigured('dUSDC') ? readVaultState(resolveVault('dUSDC')) : Promise.resolve(null),
+      listShares(walletAddress),
+    ]);
+
+    // `sim:` and `ppn:` receipts are hydrated by their dedicated portfolio
+    // endpoints. Treating them as basket IDs both double-counts them and sends
+    // non-UUID labels to Supabase's UUID lookup.
+    const basketShares = shares.filter(
+      (share) => !share.label.startsWith('sim:') && !share.label.startsWith('ppn:'),
+    );
+    const positions = await Promise.all(basketShares.map(async (s) => {
+      const sharePrice = s.currency === 'dUSDC' && dusdcState ? dusdcState.share_price : musdcState.share_price;
+      const currentValue = s.shares * sharePrice;
+      const costBasis = s.principal_usdc;
+      const unrealizedPnl = currentValue - costBasis;
+      // Resolve the bundle this position belongs to so the typed FE contract gets
+      // risk_tier / resolution_date / created_at instead of undefined (which the
+      // NaN-guarded UI renders as blank/"unknown"). The on-chain share label is
+      // the bundle id; if no Supabase bundle matches, fall back to sensible
+      // defaults rather than omitting the fields.
+      const label = s.label || 'pelagos-vault';
+      const bundle = await getBundleById(label).catch(() => null);
+      return {
+        position_id: s.share_id,
+        share_id: s.share_id,
+        bundle_id: label,
+        bundle_name: bundle?.name || s.label || 'Pelagos Vault',
+        bundle_status: 'active',
+        risk_tier: bundle?.risk_tier ?? null,
+        resolution_date: bundle?.resolution_date ?? null,
+        created_at: bundle?.created_at ?? null,
+        tokens_held: s.shares,
+        entry_price: costBasis > 0 && s.shares > 0 ? costBasis / s.shares : 1,
+        deposited_usdc: costBasis,
+        current_nav: sharePrice,
+        current_value: currentValue,
+        unrealized_pnl: unrealizedPnl,
+        pnl_percent: costBasis > 0 ? (unrealizedPnl / costBasis) * 100 : 0,
+      };
+    }));
+
+    const totalValue = positions.reduce((s, p) => s + p.current_value, 0);
+    const totalDeposited = positions.reduce((s, p) => s + p.deposited_usdc, 0);
+    const totalPnl = totalValue - totalDeposited;
+    res.json({
+      wallet_address: walletAddress,
+      // vault_id + share_price are the mUSDC rail's (matching VAULT.vaultObjectId).
+      // Positions can span both rails and are valued per-row via current_nav above;
+      // the FE reads per-row, not this top-level price.
+      vault_id: VAULT.vaultObjectId,
+      share_price: musdcState.share_price,
+      positions,
+      total_value: totalValue,
+      total_deposited: totalDeposited,
+      total_pnl: totalPnl,
+      total_pnl_percent: totalDeposited > 0 ? (totalPnl / totalDeposited) * 100 : 0,
+    });
+  } catch (err) {
+    console.error('GET /api/deposit/portfolio error:', err);
+    res.status(500).json({ error: `Failed to fetch portfolio: ${(err as Error).message}` });
+  }
+});
+
+router.get('/transactions/:walletAddress', async (req: Request, res: Response) => {
+  try {
+    const { walletAddress } = req.params;
+    // Reject malformed addresses before any RPC/DB call so a bad param returns a
+    // clean 400 instead of a 500 — parity with /portfolio and the dev routes.
+    if (!/^0x[0-9a-fA-F]{64}$/.test(walletAddress)) {
+      return res.status(400).json({ error: 'invalid address' });
+    }
+    const [transactions, ledgerVaults] = await Promise.all([
+      getTransactionsByWallet(walletAddress),
+      getPPNVaultsForLedger(walletAddress).catch(() => []),
+    ]);
+    // Map every vault's deposit + redemption digest -> the vault, so each
+    // transaction can be tagged with its product type (note / tranche). A tx
+    // with no vault match is a Market Basket (PBU units, no vault share).
+    const vaultBySig = new Map<string, (typeof ledgerVaults)[number]>();
+    for (const v of ledgerVaults) {
+      if (v.onchain_tx_signature) vaultBySig.set(v.onchain_tx_signature, v);
+      if (v.redemption_tx_signature) vaultBySig.set(v.redemption_tx_signature, v);
+    }
+    const enriched = await Promise.all(
+      transactions.map(async (tx) => {
+        const bundle = await getBundleById(tx.bundle_id).catch(() => null);
+        const v = tx.tx_signature ? vaultBySig.get(tx.tx_signature) : undefined;
+        // product: 'tranche' (has tranche_kind) | 'note' (vault share, no
+        // tranche) | 'basket' (no vault match). Drives the History label.
+        const product = v ? (v.tranche_kind ? 'tranche' : 'note') : 'basket';
+        return {
+          id: tx.id,
+          bundle_id: tx.bundle_id,
+          bundle_name: bundle?.name ?? 'Pelagos Vault',
+          type: tx.type,
+          amount_usdc: tx.amount_usdc,
+          tokens: tx.tokens,
+          fee_usdc: tx.fee_usdc,
+          tx_signature: tx.tx_signature,
+          created_at: tx.created_at,
+          product,
+          tranche_kind: v?.tranche_kind ?? null,
+          principal_usdc: v ? v.principal_usdc : null,
+        };
+      }),
+    );
+    res.json({ wallet_address: walletAddress, count: enriched.length, transactions: enriched });
+  } catch (err) {
+    console.error('GET /api/deposit/transactions error:', err);
+    res.status(500).json({ error: `Failed to fetch transactions: ${(err as Error).message}` });
+  }
+});
+
+export const depositRoutes = router;

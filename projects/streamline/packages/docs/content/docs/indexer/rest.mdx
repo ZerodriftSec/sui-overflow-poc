@@ -1,0 +1,46 @@
+---
+title: REST API
+description: Health, list streams, get stream, drip history.
+icon: Globe
+---
+
+# REST API
+
+Base URL examples: `http://localhost:8080` or your hosted indexer.
+
+| Method | Path | Description |
+| --- | --- | --- |
+| `GET` | `/health` | Liveness |
+| `GET` | `/streams?freelancer=&sender=` | List streams (optional filters) |
+| `GET` | `/stream/{id}` | One stream record |
+| `GET` | `/stream/{id}/drips` | Drip history |
+
+## Stream record
+
+```ts
+type StreamRecord = {
+  id: string;
+  sender: string;
+  freelancer: string;
+  coin_type: string;
+  total: number;
+  remaining: number;
+  state: "locked" | "pending_review" | "dripping" | "paused" | "done";
+  current_milestone: number;
+  n_milestones: number;
+  duration_ms: number;
+  drip_interval_ms: number;
+  last_drip_ms: number;
+  review_deadline_ms: number | null;
+  created_at_ms: number;
+};
+```
+
+## From the SDK
+
+```ts
+const streams = await sl.streams.list({ sender: address });
+const one = await sl.streams.get(streamId);
+```
+
+`IndexerClient` is also exported for standalone use without a signer.

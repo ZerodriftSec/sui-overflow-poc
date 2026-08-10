@@ -1,0 +1,45 @@
+{
+  "name": "@noderails/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "PORT=8080 tsx watch --env-file=../../.env src/index.ts",
+    "start": "PORT=8080 node --env-file=../../.env dist/index.js"
+  },
+  "dependencies": {
+    "@aws-sdk/client-sqs": "^3.1003.0",
+    "@noderails/common": "workspace:*",
+    "@noderails/database": "workspace:*",
+    "@noderails/indexer-client": "workspace:*",
+    "@noderails/mtxm-client": "workspace:*",
+    "@noderails/queue": "workspace:*",
+    "@noderails/redis": "workspace:^",
+    "@noderails/service-base": "workspace:*",
+    "@noderails/solana": "workspace:*",
+    "@noderails/sui": "workspace:*",
+    "@noderails/storage": "workspace:*",
+    "@noderails/web3": "workspace:*",
+    "@mysten/sui": "^1.21.1",
+    "@solana/spl-token": "^0.4.9",
+    "@solana/web3.js": "^1.98.4",
+    "bcrypt": "^5.1.1",
+    "bs58": "^6.0.0",
+    "cookie-parser": "^1.4.7",
+    "express": "^4.21.0",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^1.4.5-lts.1",
+    "viem": "^2.21.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/bcrypt": "^5.0.2",
+    "@types/cookie-parser": "^1.4.7",
+    "@types/express": "^4.17.21",
+    "@types/jsonwebtoken": "^9.0.7",
+    "@types/multer": "^1.4.12",
+    "tsx": "^4.19.0",
+    "typescript": "^5.4.0"
+  }
+}

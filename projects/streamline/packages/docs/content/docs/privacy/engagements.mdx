@@ -1,0 +1,84 @@
+---
+title: Private engagements
+description: Default privacy — hide amount, who↔whom, and drip cadence inside a shielded pool.
+icon: ShieldCheck
+---
+
+# Private engagements
+
+**Full private** is the default create path in the StreamLine app. It is not the same as “Private amounts” on a named stream.
+
+A **private engagement** funds work money as **notes in a shared shielded pool**, pins a **vesting schedule commitment** (no on-chain `sender` / `freelancer`), and settles with a single Groth16 proof that is both a **shielded spend** and a **lazy vest** bound (`private_settle`).
+
+## What is hidden vs what still leaks
+
+| Signal | Inside the pool | At the boundary |
+| --- | --- | --- |
+| **How much** (drip / remaining / earned) | Hidden (commitments + proofs) | Deposit & withdraw reveal amount; default **overfund + private split** makes the public edge a round $50 bucket ≠ the work note |
+| **Who ↔ whom** | Hidden (`Spent`-shaped settles; no party fields) | Deposit tx shows the funder’s address (unless **privacy relayer** two-step open) |
+| **When / drip cadence** | No per-tick drip events | Block time still exists; settle txs are sparse |
+| **Schedule (rate, start, cap)** | Pinned as `params_commitment` (values stay secret) | Commitment itself is public on the engagement object |
+
+Privacy strength scales with the **anonymity set** (how many notes share the pool). An empty demo pool is correct crypto with weak who-hiding.
+
+## Overfund + private split
+
+On open/deposit the app (by default) locks a **rounded overfund**, then immediately `spend`s into **work(desired) + change**. Observers see the bucket size entering the pool, not the economic wage note. See `frontend/src/lib/overfund-split.ts`.
+
+## Lifecycle
+
+```
+overfund deposit (edge) ──► note in Merkle tree + PrivateEngagement { params_cm = desired cap }
+                              │
+                     private spend → work note + change
+                              │
+                     settle_vested (private_settle proof)
+                              │
+              worker note + change note  (unlinkable Spent-shaped event)
+                              │
+                     withdraw / claim_exit (edge — reveals amount)
+```
+
+Move surface (`streamline::private_stream`):
+
+- `open_engagement` — deposit into `shielded_pool`, pin schedule, optional encrypted note publish
+- `settle_vested` — verify `private_settle`, nullify input note, insert outputs
+- `claim_exit` — thin wrapper over pool `withdraw`
+
+Events carry **no parties and no amounts** on settle (`EngagementSettled { nullifier, cm1, cm2 }`).
+
+## Openings: ECIES, not Seal
+
+Cross-party note openings use an **ECIES sealed box** (`publish_note` + scan).  
+**Seal** (threshold IBE + `seal_approve`) is the openings path for **amounts-only** `ConfidentialStream`s — don’t conflate the two in front of a judge.
+
+## When to use which mode
+
+| Mode | Use when |
+| --- | --- |
+| **Private engagement (default)** | You want amount + graph + no drip clock (personal / contractor pay) |
+| **Amounts-only** (`ConfidentialStream`) | You need milestones, mutual dispute on a named object |
+| **Public** (`Stream`) | Borrow, yield split, **or Pro treasury hire today** |
+
+Org **Pro hire is public** — see [Payroll privacy](/docs/privacy/payroll).
+
+## Privacy relayer (origin hiding)
+
+When `PRIVACY_RELAYER_SUI_PRIVATE_KEY` is set, the app can submit pool txs through a **privacy relayer**:
+
+| Op | How |
+| --- | --- |
+| Spend / settle / withdraw | Client proves; server rebuilds PTB and signs as relayer |
+| Deposit / open engagement | **Two-step:** user transfers USDC → relayer address, then relayer deposits |
+
+**What it hides:** your address as **tx sender**.  
+**What it does not hide:** deposit/withdraw **amounts**; two-step deposit **timing** across the fund + deposit txs.
+
+Fund the relayer with SUI (gas) and USDC (for relayed deposits). See `GET /api/relayer` → `{ enabled, address }`.
+
+## Related
+
+- [Payroll privacy](/docs/privacy/payroll) — wage threat model & Pro gaps
+- [Confidential amounts](/docs/privacy/amounts) — amounts-only compat path
+- [Identity](/docs/privacy/identity) — zkLogin / gasless
+- [Contracts](/docs/protocol/contracts) — Move modules

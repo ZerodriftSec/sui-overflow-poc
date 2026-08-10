@@ -1,0 +1,1332 @@
+"use client";
+
+import Link from "next/link";
+import React, { useEffect, useState } from "react";
+import { Header, PageFrame } from "./app/_components/Header";
+import { C, FD, FM, FS, BACKEND_URL, EASE } from "./app/_lib/tokens";
+import { monotonePath } from "./app/_lib/curve";
+import {
+  DistributionCandidate,
+  fetchDistributionCandidates,
+} from "./app/_lib/distribution-client";
+
+
+/* ------------------------------------------------------------------ */
+/* Inline icons — stroke inherits currentColor.                       */
+/* ------------------------------------------------------------------ */
+
+type IconProps = { size?: number };
+
+function IconCurve({ size = 18 }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" aria-hidden>
+      <path d="M3 17.5c3 0 3.6-9 6.6-9s2.7 6 4.2 6 2.1-4.5 4.2-4.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M3 20.5h18" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" opacity="0.45" />
+    </svg>
+  );
+}
+
+function IconBasket({ size = 18 }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" aria-hidden>
+      <path d="M12 3.2l8 4-8 4-8-4 8-4z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+      <path d="M4 11.4l8 4 8-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" opacity="0.6" />
+      <path d="M4 15.6l8 4 8-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" opacity="0.32" />
+    </svg>
+  );
+}
+
+function IconSlices({ size = 18 }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" aria-hidden>
+      <rect x="4" y="5" width="16" height="3.4" rx="1.4" stroke="currentColor" strokeWidth="1.6" />
+      <rect x="4" y="10.3" width="11.5" height="3.4" rx="1.4" stroke="currentColor" strokeWidth="1.6" opacity="0.62" />
+      <rect x="4" y="15.6" width="7" height="3.4" rx="1.4" stroke="currentColor" strokeWidth="1.6" opacity="0.34" />
+    </svg>
+  );
+}
+
+function IconShield({ size = 18 }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" aria-hidden>
+      <path d="M12 3l7 2.8v5.2c0 4.2-3 7.3-7 8.9-4-1.6-7-4.7-7-8.9V5.8L12 3z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+      <path d="M9 12.2l2.1 2.1L15 10.4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function IconArrow({ size = 14 }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" aria-hidden>
+      <path d="M5 12h13M13 6l6 6-6 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function IconSignal({ size = 18 }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" aria-hidden>
+      <path d="M3 12.5h3.4l2.3-6.4 3.8 12 2.4-7.1 1.5 3.2H21" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function IconCoin({ size = 18 }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" aria-hidden>
+      <circle cx="12" cy="12" r="8.4" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M12 7.4v9.2M14.3 9.3c-.5-.8-1.4-1.2-2.5-1.2-1.5 0-2.5.8-2.5 1.9 0 2.6 5.2 1.3 5.2 4 0 1.2-1.1 2-2.7 2-1.2 0-2.2-.5-2.7-1.3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function IconCube({ size = 18 }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" aria-hidden>
+      <path d="M12 3l8 4.4v9.2L12 21l-8-4.4V7.4L12 3z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+      <path d="M4 7.6l8 4.4 8-4.4M12 12v9" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" opacity="0.55" />
+    </svg>
+  );
+}
+
+function IconVol({ size = 18 }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" aria-hidden>
+      <path d="M3 7c3 0 3.5 9 6.5 9S13 8.5 16 8.5 18 16 21 16" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
+
+/* ------------------------------------------------------------------ */
+/* Geometry helpers                                                   */
+/* ------------------------------------------------------------------ */
+
+function pct(value: number, digits = 1): string {
+  return `${(value * 100).toFixed(digits)}%`;
+}
+
+/* Clean, non-overshooting curve shared with every chart in the app. */
+function smoothPath(pts: Array<[number, number]>): string {
+  return monotonePath(pts);
+}
+
+/* ------------------------------------------------------------------ */
+/* Hero terminal — clean live-market panel with real axes.            */
+/* ------------------------------------------------------------------ */
+
+function CurveTerminal({ candidate, ready }: { candidate: DistributionCandidate | null; ready: boolean }) {
+  const W = 680;
+  const H = 348;
+  const padL = 44;
+  const padR = 20;
+  const padT = 38;
+  const padB = 40;
+  const plotL = padL;
+  const plotR = W - padR;
+  const plotW = plotR - plotL;
+  const plotT = padT;
+  const plotB = H - padB;
+  const plotH = plotB - plotT;
+
+  const fallback = [0.05, 0.11, 0.2, 0.31, 0.19, 0.09, 0.05];
+  const series = (candidate?.reference_curve.length ? candidate.reference_curve : fallback).slice(0, 8);
+  const n = series.length;
+  const max = Math.max(...series, 0.05) * 1.15;
+
+  const x = (i: number) => plotL + (i / Math.max(1, n - 1)) * plotW;
+  const y = (v: number) => plotT + (1 - v / max) * plotH;
+  const bandW = plotW / Math.max(1, n - 1);
+
+  const pts = series.map((v, i): [number, number] => [x(i), y(v)]);
+  const linePath = smoothPath(pts);
+  const areaPath = `${linePath} L ${x(n - 1).toFixed(1)} ${plotB} L ${x(0).toFixed(1)} ${plotB} Z`;
+  const topIndex = series.reduce((best, v, i) => (v > series[best] ? i : best), 0);
+
+  const yTicks = [0, 0.5, 1]; // fraction of max
+  const isLive = Boolean(candidate);
+
+  return (
+    <div className="lp-term">
+      <div className="lp-term-head">
+        <div>
+          <span className="lp-term-eyebrow">Distribution market</span>
+          <strong className="lp-term-name">{candidate?.title ?? "Sample distribution"}</strong>
+        </div>
+        <span className="lp-live">
+          <i className={isLive ? "is-live" : ""} />
+          {isLive ? "Live" : "Sample"}
+        </span>
+      </div>
+
+      <svg viewBox={`0 0 ${W} ${H}`} className="lp-curve" role="img" aria-label="Probability distribution across CLOB-implied bands">
+        <defs>
+          <linearGradient id="lpFill" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor={C.tealLight} stopOpacity="0.16" />
+            <stop offset="100%" stopColor={C.tealLight} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+
+        {/* Y axis: gridlines + probability labels */}
+        {yTicks.map((t) => {
+          const gy = plotT + (1 - t) * plotH;
+          return (
+            <g key={t}>
+              <line x1={plotL} x2={plotR} y1={gy} y2={gy} stroke={C.border} strokeWidth="1" opacity={t === 0 ? 1 : 0.5} />
+              <text x={plotL - 10} y={gy + 3.5} textAnchor="end" fill={C.textMuted} fontFamily={FM} fontSize="10">{pct(t * max, 0)}</text>
+            </g>
+          );
+        })}
+
+        {/* X tick marks + band labels render immediately (no jerk) */}
+        {series.map((_, i) => (
+          <g key={`x${i}`}>
+            <line x1={x(i)} x2={x(i)} y1={plotB} y2={plotB + 5} stroke={C.border} strokeWidth="1" />
+            <text x={x(i)} y={plotB + 18} textAnchor="middle" fill={C.textMuted} fontFamily={FM} fontSize="9.5">B{i + 1}</text>
+          </g>
+        ))}
+
+        {/* The curve mounts only once the data has settled, so it draws in
+            exactly once on its final shape — no mid-animation shape swap. */}
+        {ready && (
+          <g key={isLive ? "live" : "sample"}>
+            <path d={areaPath} fill="url(#lpFill)" className="lp-area" />
+            <path d={linePath} fill="none" stroke={C.tealLight} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="lp-line" pathLength={1} />
+            {series.map((v, i) => (
+              <g key={i} className="lp-stage">
+                <line className="lp-guide" x1={x(i)} x2={x(i)} y1={plotT} y2={plotB} stroke={C.tealLight} strokeWidth="1" strokeDasharray="3 4" />
+                <circle className="lp-dot" cx={x(i)} cy={y(v)} r={i === topIndex ? 3.6 : 2.8} fill={i === topIndex ? C.tealLight : C.surface} stroke={C.tealLight} strokeWidth="1.6" />
+                <text className={`lp-val${i === topIndex ? " is-peak" : ""}`} x={x(i)} y={Math.max(16, y(v) - 12)} textAnchor="middle" fill={i === topIndex ? C.textPrimary : C.textSecondary} fontFamily={FM} fontSize="11">
+                  {pct(v)}
+                </text>
+                <rect x={x(i) - bandW / 2} y={plotT} width={bandW} height={plotH} fill="transparent" />
+              </g>
+            ))}
+          </g>
+        )}
+      </svg>
+
+      <div className="lp-readout">
+        <div><span className="k">Peak band</span><span className="v">{pct(series[topIndex])}</span></div>
+        <div><span className="k">Live bands</span><span className="v">{candidate ? `${candidate.clob_book_count}/${candidate.band_count}` : `${n}`}</span></div>
+        <div><span className="k">Collateral</span><span className="v">USDC</span></div>
+        <div><span className="k">Settles</span><span className="v">Sui testnet</span></div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Scroll-triggered big charts — one per structured product.          */
+/* The parent row toggles `is-drawn` once it scrolls into view, which  */
+/* fires the line draw-in (same feel as the hero terminal).            */
+/* ------------------------------------------------------------------ */
+
+/* One global rAF-throttled scroll handler scrubs `--reveal` (0..1) on every
+   `.scroll-fade` element from its position in the viewport — smoothstepped so
+   the fade is clean: solid while the block sits in the reading band, easing to
+   transparent as it enters from the bottom or leaves out the top. It also flips
+   `is-drawn` on feature rows so their charts draw in once. JS-driven, so it is
+   immune to the overflow ancestors that break CSS view() timelines. */
+function useGlobalScrollFade() {
+  useEffect(() => {
+    const reduce = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (reduce) return;
+    let raf = 0;
+    const update = () => {
+      raf = 0;
+      const vh = window.innerHeight || 1;
+      // Wide bands (≈45% of the viewport each) so the fade is gradual and clearly
+      // visible while scrolling: a block eases in as its top rises through the
+      // lower half, sits solid across the centre, then eases out as its bottom
+      // climbs through the upper half — so the content leaving the top fades.
+      const band = vh * 0.45;
+      const els = document.querySelectorAll<HTMLElement>(".scroll-fade");
+      els.forEach((el) => {
+        const r = el.getBoundingClientRect();
+        const enter = clamp((vh - r.top) / band, 0, 1);
+        const exit = clamp(r.bottom / band, 0, 1);
+        let o = Math.min(enter, exit);
+        o = o * o * (3 - 2 * o); // smoothstep
+        el.style.setProperty("--reveal", o.toFixed(3));
+        if (o > 0.3) el.classList.add("is-drawn");
+      });
+    };
+    const onScroll = () => {
+      if (!raf) raf = requestAnimationFrame(update);
+    };
+    update();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+
+    // Robustness net: guarantee the one-shot draw-in (`is-drawn`) fires the
+    // moment a block is even slightly visible, independent of the scroll-scrub
+    // opacity threshold above. Without this, a chart/waterfall that is on a
+    // tall viewport (or never scrolled into the reveal band) could stay stuck
+    // in its hidden base state (stroke-dashoffset / scaleY(0)).
+    let io: IntersectionObserver | null = null;
+    if (typeof IntersectionObserver !== "undefined") {
+      io = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            if (entry.isIntersecting) {
+              entry.target.classList.add("is-drawn");
+              io?.unobserve(entry.target);
+            }
+          }
+        },
+        { threshold: 0.08 },
+      );
+      document.querySelectorAll<HTMLElement>(".scroll-fade").forEach((el) => io?.observe(el));
+    }
+
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+      if (raf) cancelAnimationFrame(raf);
+      io?.disconnect();
+    };
+  }, []);
+}
+
+type Series = {
+  values: number[]; // in chart Y-domain units
+  bold?: boolean;
+  op?: number;
+  area?: boolean;
+  dashed?: boolean;
+  name?: string;
+  delay?: number;
+  endLabel?: string;
+  endMuted?: boolean; // small muted endpoint label, no marker dot
+};
+
+const CW = 600;
+const CH = 312;
+const CpL = 46;
+const CpR = 50;
+const CpT = 24;
+const CpB = 46;
+const cPlotL = CpL;
+const cPlotR = CW - CpR;
+const cPlotW = cPlotR - cPlotL;
+const cPlotT = CpT;
+const cPlotB = CH - CpB;
+const cPlotH = cPlotB - cPlotT;
+const cx = (i: number, n: number) => cPlotL + (i / Math.max(1, n - 1)) * cPlotW;
+
+function seriesPaths(s: Series, cy: (v: number) => number, fillId: string, key: React.Key) {
+  const n = s.values.length;
+  const pts = s.values.map((v, i): [number, number] => [cx(i, n), cy(v)]);
+  const d = smoothPath(pts);
+  const delay = `${s.delay ?? 0}s`;
+  const last = pts[n - 1];
+  return (
+    <g key={key}>
+      {s.area && (
+        <path d={`${d} L ${cx(n - 1, n).toFixed(1)} ${cPlotB} L ${cx(0, n).toFixed(1)} ${cPlotB} Z`} fill={`url(#${fillId})`} className="feat-area" style={{ animationDelay: delay }} />
+      )}
+      {s.dashed ? (
+        <path d={d} fill="none" stroke={C.tealLight} strokeWidth="1.5" strokeOpacity={s.op ?? 0.6} strokeDasharray="6 6" className="feat-dash" style={{ animationDelay: delay }} />
+      ) : (
+        <path d={d} fill="none" stroke={C.tealLight} strokeWidth={s.bold ? 2.6 : 1.8} strokeOpacity={s.op ?? 1} strokeLinecap="round" strokeLinejoin="round" className="feat-line" style={{ animationDelay: delay }} pathLength={1} />
+      )}
+      {s.endLabel && (
+        <g className="feat-end" style={{ animationDelay: delay }}>
+          {!s.endMuted && <circle cx={last[0]} cy={last[1]} r={3.2} fill={C.tealLight} fillOpacity={s.op ?? 1} />}
+          <text x={last[0] + 7} y={last[1] + 3.5} textAnchor="start" fill={s.endMuted ? C.textMuted : C.textPrimary} fontFamily={FM} fontSize={s.endMuted ? "9.5" : "11.5"} fontWeight={s.endMuted ? 400 : 600}>{s.endLabel}</text>
+        </g>
+      )}
+    </g>
+  );
+}
+
+function ChartFrame({
+  id,
+  caption,
+  yMin,
+  yMax,
+  yTicks,
+  xLabels,
+  children,
+}: {
+  id: string;
+  caption: string;
+  yMin: number;
+  yMax: number;
+  yTicks: Array<{ v: number; label: string }>;
+  xLabels: string[];
+  children: (cy: (v: number) => number, fillId: string) => React.ReactNode;
+}) {
+  const fillId = `featFill-${id}`;
+  const cy = (v: number) => cPlotT + (1 - (v - yMin) / (yMax - yMin)) * cPlotH;
+  return (
+    <svg viewBox={`0 0 ${CW} ${CH}`} className="feat-chart" role="img" aria-label={caption}>
+      <defs>
+        <linearGradient id={fillId} x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor={C.tealLight} stopOpacity="0.16" />
+          <stop offset="100%" stopColor={C.tealLight} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      {yTicks.map((t) => {
+        const gy = cy(t.v);
+        return (
+          <g key={t.v}>
+            <line x1={cPlotL} x2={cPlotR} y1={gy} y2={gy} stroke={C.border} strokeWidth="1" opacity={0.5} />
+            <text x={cPlotL - 9} y={gy + 3.5} textAnchor="end" fill={C.textMuted} fontFamily={FM} fontSize="10">{t.label}</text>
+          </g>
+        );
+      })}
+      <line x1={cPlotL} x2={cPlotL} y1={cPlotT} y2={cPlotB} stroke={C.border} strokeWidth="1" />
+      {xLabels.map((lab, k) => {
+        const xx = cPlotL + (k / Math.max(1, xLabels.length - 1)) * cPlotW;
+        return (
+          <g key={k}>
+            <line x1={xx} x2={xx} y1={cPlotB} y2={cPlotB + 5} stroke={C.border} strokeWidth="1" />
+            <text x={xx} y={cPlotB + 18} textAnchor="middle" fill={C.textMuted} fontFamily={FM} fontSize="9.5">{lab}</text>
+          </g>
+        );
+      })}
+      {children(cy, fillId)}
+      <text x={(cPlotL + cPlotR) / 2} y={CH - 9} textAnchor="middle" fill={C.textMuted} fontFamily={FM} fontSize="9.5" letterSpacing="0.05em">{caption}</text>
+    </svg>
+  );
+}
+
+/* Baskets — uncorrelated component events scatter above and below the line;
+   pooling them gives the smooth basket that resolves ~97% with far less
+   variance than any single leg. The diversification edge, made visible. */
+function BasketChart({ caption }: { caption: string }) {
+  const comps = [
+    { values: [95.6, 94.3, 96.9, 95.1, 97.7, 98.6], end: "98.6%" },
+    { values: [92.3, 94.0, 92.5, 95.0, 93.6, 95.6], end: "95.6%" },
+    { values: [91.1, 92.8, 94.4, 92.6, 95.1, 94.3], end: "94.3%" },
+    { values: [93.8, 92.4, 94.7, 93.2, 91.9, 93.0], end: "93.0%" },
+    { values: [94.6, 93.1, 91.6, 93.5, 92.2, 91.8], end: "91.8%" },
+  ];
+  const basket = [94.1, 94.7, 95.3, 95.9, 96.5, 97.0];
+  return (
+    <ChartFrame id="basket" caption={caption} yMin={90} yMax={100} yTicks={[{ v: 90, label: "90%" }, { v: 95, label: "95%" }, { v: 100, label: "100%" }]} xLabels={["Apr", "May", "Jun", "Jul", "Aug", "Now"]}>
+      {(cy, fillId) => (
+        <>
+          {comps.map((c, i) => seriesPaths({ values: c.values, op: 0.28, delay: 0.06 * i, endLabel: c.end, endMuted: true }, cy, fillId, `c${i}`))}
+          {seriesPaths({ values: basket, bold: true, area: true, endLabel: "97%", delay: 0.26 }, cy, fillId, "b")}
+        </>
+      )}
+    </ChartFrame>
+  );
+}
+
+/* Risk Slices — one contiguous capital column split into tranches, with the
+   loss waterfall flowing down it from the first-loss slice to the protected one. */
+function WaterfallViz({ caption }: { caption: string }) {
+  const top = cPlotT;
+  const bottom = cPlotB;
+  const colH = bottom - top;
+  const colX = 196;
+  const colW = 104;
+  // top → bottom: first loss sits on top, the protected senior slice at the base.
+  const segs = [
+    { name: "Junior", share: 0.15, op: 0.32, role: "first loss" },
+    { name: "Mezzanine", share: 0.3, op: 0.58, role: "balanced" },
+    { name: "Senior", share: 0.55, op: 0.92, role: "protected" },
+  ];
+  let y = top;
+  const rows = segs.map((seg, i) => {
+    const segH = seg.share * colH;
+    const r = { ...seg, y, segH, idx: i };
+    y += segH;
+    return r;
+  });
+  const axisX = colX - 16;
+  return (
+    <svg viewBox={`0 0 ${CW} ${CH}`} className="feat-chart" role="img" aria-label={caption}>
+      {/* y axis + 0/50/100 ticks pinned to the column */}
+      <line x1={axisX} x2={axisX} y1={top} y2={bottom} stroke={C.border} strokeWidth="1" />
+      {[{ v: 1, l: "100%" }, { v: 0.5, l: "50%" }, { v: 0, l: "0%" }].map((t) => {
+        const gy = bottom - t.v * colH;
+        return (
+          <g key={t.v}>
+            <line x1={axisX - 5} x2={axisX} y1={gy} y2={gy} stroke={C.border} strokeWidth="1" />
+            <text x={axisX - 10} y={gy + 3.5} textAnchor="end" fill={C.textMuted} fontFamily={FM} fontSize="10">{t.l}</text>
+          </g>
+        );
+      })}
+
+      {/* loss waterfall — flows down the stack, first loss → protected */}
+      <g opacity="0.9">
+        <line x1={axisX - 54} x2={axisX - 54} y1={top + 18} y2={bottom - 18} stroke={C.tealLight} strokeWidth="1.5" strokeOpacity="0.7" />
+        <path d={`M ${axisX - 58} ${bottom - 26} L ${axisX - 54} ${bottom - 16} L ${axisX - 50} ${bottom - 26}`} fill="none" stroke={C.tealLight} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <text x={axisX - 54} y={top + 10} textAnchor="middle" fill={C.textMuted} fontFamily={FM} fontSize="8" letterSpacing="0.12em">LOSS</text>
+      </g>
+
+      {/* one contiguous column, scaled up from its base as it draws in */}
+      <g className="wf-stack" style={{ transformBox: "fill-box", transformOrigin: "center bottom" }}>
+        {rows.map((r) => (
+          <rect key={r.name} x={colX} y={r.y} width={colW} height={r.segH} fill={C.tealLight} fillOpacity={r.op} />
+        ))}
+        {/* hairline dividers between tranches */}
+        {rows.slice(1).map((r) => (
+          <line key={`d${r.name}`} x1={colX} x2={colX + colW} y1={r.y} y2={r.y} stroke={C.bg} strokeWidth="1.5" />
+        ))}
+      </g>
+
+      {/* tranche labels */}
+      {rows.map((r) => (
+        <g key={`l${r.name}`} className="wf-lab" style={{ animationDelay: `${(segs.length - 1 - r.idx) * 0.1}s` }}>
+          <text x={colX + colW + 22} y={r.y + r.segH / 2 - 3} fill={C.textPrimary} fontFamily={FD} fontSize="15" fontWeight={600}>{r.name}</text>
+          <text x={colX + colW + 22} y={r.y + r.segH / 2 + 15} fill={C.textMuted} fontFamily={FM} fontSize="11">{Math.round(r.share * 100)}% · {r.role}</text>
+        </g>
+      ))}
+
+      <text x={(cPlotL + cPlotR) / 2} y={CH - 9} textAnchor="middle" fill={C.textMuted} fontFamily={FM} fontSize="9.5" letterSpacing="0.05em">{caption}</text>
+    </svg>
+  );
+}
+
+/* Protected Notes — the TradFi principal-protected note, plainly: the underlying
+   market can fall below the floor, but the note's downside is floored at 95% and
+   it keeps the upside above it. Two lines + the floor — nothing more. */
+function ProtectedViz({ caption }: { caption: string }) {
+  const target = 95;
+  const underlying = [96.4, 94.6, 92.0, 93.0, 95.2, 97.6, 99.6];
+  const note = [95.6, 95.2, 95.1, 95.4, 96.3, 97.6, 98.6];
+  return (
+    <ChartFrame id="ppn" caption={caption} yMin={90} yMax={100} yTicks={[{ v: 90, label: "90%" }, { v: 95, label: "95%" }, { v: 100, label: "100%" }]} xLabels={["Open", "", "", "Mid", "", "", "Resolve"]}>
+      {(cy, fillId) => (
+        <>
+          {/* the protected zone — the note never enters it; the market can */}
+          <rect x={cPlotL} y={cy(target)} width={cPlotW} height={cPlotB - cy(target)} fill={C.tealLight} fillOpacity={0.05} />
+          {/* underlying market — falls through the floor, then recovers above it */}
+          {seriesPaths({ values: underlying, op: 0.42, delay: 0.1, endLabel: "99.6%", endMuted: true }, cy, fillId, "u")}
+          {/* the note — held at the floor on the downside, captures the upside */}
+          {seriesPaths({ values: note, bold: true, endLabel: "98.6%", delay: 0.22 }, cy, fillId, "n")}
+          {/* 95% floor */}
+          {seriesPaths({ values: Array(7).fill(target), dashed: true, op: 0.75 }, cy, fillId, "f")}
+          <text className="feat-end" x={cPlotL + 8} y={cy(target) + 15} textAnchor="start" fill={C.textMuted} fontFamily={FM} fontSize="9.5" letterSpacing="0.06em">PRINCIPAL FLOOR</text>
+        </>
+      )}
+    </ChartFrame>
+  );
+}
+
+/* Distribution Markets — you don't bet a single yes/no point, you trade a whole
+   continuous view of where a number lands. Two bell curves over the same outcome
+   axis: the market's implied distribution (muted) and your sharper view (bold),
+   with your μ marker and the ±σ band you're trading. */
+function DistributionViz({ caption }: { caption: string }) {
+  const baseY = cPlotB;
+  const span = cPlotW;
+  const N = 72;
+  const muF = 0.58, sigF = 0.13, peakY = cPlotT + 14;
+  const dens = (t: number) => Math.exp(-0.5 * ((t - muF) / sigF) ** 2);
+  const gauss = (mu: number, sig: number, pY: number): Array<[number, number]> => {
+    const pts: Array<[number, number]> = [];
+    for (let i = 0; i <= N; i++) {
+      const t = i / N;
+      const z = (t - mu) / sig;
+      pts.push([cPlotL + t * span, baseY - Math.exp(-0.5 * z * z) * (baseY - pY)]);
+    }
+    return pts;
+  };
+  const market = gauss(0.44, 0.22, cPlotT + 92);
+  const view = gauss(muF, sigF, peakY);
+  const muX = cPlotL + muF * span;
+  const sigLo = cPlotL + (muF - sigF) * span;
+  const sigHi = cPlotL + (muF + sigF) * span;
+  const fillId = "dist-fill";
+  const nBars = 15;
+  const bw = (span / nBars) * 0.58;
+  const bars = Array.from({ length: nBars }, (_, i) => {
+    const t = (i + 0.5) / nBars;
+    const top = baseY - dens(t) * (baseY - peakY);
+    return { cx: cPlotL + t * span, top, inBand: Math.abs(t - muF) <= sigF + 1e-9 };
+  });
+  const areaD = `${smoothPath(view)} L ${view[view.length - 1][0].toFixed(1)} ${baseY} L ${view[0][0].toFixed(1)} ${baseY} Z`;
+  return (
+    <svg viewBox={`0 0 ${CW} ${CH}`} className="feat-chart" role="img" aria-label={caption}>
+      <defs>
+        <linearGradient id={fillId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={C.tealLight} stopOpacity="0.18" />
+          <stop offset="100%" stopColor={C.tealLight} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      {/* outcome / strike axis */}
+      <line x1={cPlotL} x2={cPlotR} y1={baseY} y2={baseY} stroke={C.border} strokeWidth="1" />
+      {/* the band you're trading */}
+      <rect x={sigLo} y={cPlotT} width={sigHi - sigLo} height={baseY - cPlotT} fill={C.tealLight} fillOpacity="0.05" />
+      {/* strike bars: each is a $1 strike in the options chain; heights trace your distribution */}
+      {bars.map((b, i) => (
+        <rect key={i} x={b.cx - bw / 2} y={b.top} width={bw} height={Math.max(0, baseY - b.top)} rx={1.5} fill={C.tealLight} fillOpacity={b.inBand ? 0.5 : 0.16} />
+      ))}
+      {/* market-implied distribution (muted, dashed) */}
+      <path d={smoothPath(market)} fill="none" stroke={C.tealLight} strokeWidth="1.8" strokeOpacity="0.28" strokeDasharray="5 5" strokeLinecap="round" strokeLinejoin="round" className="feat-line" pathLength={1} />
+      {/* your sharper view — the envelope the strikes trace */}
+      <path d={areaD} fill={`url(#${fillId})`} className="feat-area" />
+      <path d={smoothPath(view)} fill="none" stroke={C.tealLight} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="feat-line" style={{ animationDelay: "0.18s" }} pathLength={1} />
+      {/* your mu */}
+      <line x1={muX} x2={muX} y1={cPlotT} y2={baseY} stroke={C.tealLight} strokeWidth="1.5" strokeOpacity="0.5" strokeDasharray="5 5" className="feat-dash" />
+      <text x={muX} y={cPlotT - 6} textAnchor="middle" fill={C.textMuted} fontFamily={FM} fontSize="9" letterSpacing="0.1em">YOUR μ</text>
+      {/* sigma ticks */}
+      <text x={sigLo} y={baseY + 16} textAnchor="middle" fill={C.textMuted} fontFamily={FM} fontSize="9.5">μ−σ</text>
+      <text x={sigHi} y={baseY + 16} textAnchor="middle" fill={C.textMuted} fontFamily={FM} fontSize="9.5">μ+σ</text>
+      <text x={(cPlotL + cPlotR) / 2} y={CH - 9} textAnchor="middle" fill={C.textMuted} fontFamily={FM} fontSize="9.5" letterSpacing="0.05em">{caption}</text>
+    </svg>
+  );
+}
+
+/* DeepBook Strategies — the core integration, made visible: a live Predict
+   order-book ladder of BTC strike levels with real depth, and the range strip
+   you mint highlighted across the middle bands (Pin / Spread / Wide). */
+function DeepBookViz({ caption }: { caption: string }) {
+  const top = cPlotT;
+  const bottom = cPlotB;
+  const H = bottom - top;
+  const levels = [
+    { px: "70k", depth: 0.30 },
+    { px: "68k", depth: 0.55 },
+    { px: "66k", depth: 0.82, inRange: true },
+    { px: "64k", depth: 1.0, inRange: true, forward: true },
+    { px: "62k", depth: 0.86, inRange: true },
+    { px: "60k", depth: 0.52 },
+    { px: "58k", depth: 0.30 },
+  ];
+  const rowH = H / levels.length;
+  const labX = cPlotL + 6;
+  const barX = labX + 56;
+  const barMax = 220;
+  const spineX = barX - 11;
+  const firstIn = levels.findIndex((l) => l.inRange);
+  const lastIn = levels.length - 1 - [...levels].reverse().findIndex((l) => l.inRange);
+  const bandTop = top + firstIn * rowH;
+  const bandBot = top + (lastIn + 1) * rowH;
+  const chipW = 88;
+  return (
+    <svg viewBox={`0 0 ${CW} ${CH}`} className="feat-chart" role="img" aria-label={caption}>
+      {/* the minted strip — a highlighted depth band across the in-range strikes */}
+      <rect x={spineX} y={bandTop} width={cPlotR - spineX} height={bandBot - bandTop} fill={C.tealLight} fillOpacity="0.06" />
+      <line x1={spineX} x2={cPlotR} y1={bandTop} y2={bandTop} stroke={C.tealLight} strokeOpacity="0.22" strokeWidth="1" strokeDasharray="4 4" />
+      <line x1={spineX} x2={cPlotR} y1={bandBot} y2={bandBot} stroke={C.tealLight} strokeOpacity="0.22" strokeWidth="1" strokeDasharray="4 4" />
+      {/* SPREAD STRIP chip, horizontal at the band's top-right */}
+      <g className="wf-lab">
+        <rect x={cPlotR - chipW} y={bandTop + 6} width={chipW} height={17} rx={4} fill={C.tealLight} fillOpacity="0.14" />
+        <text x={cPlotR - chipW / 2} y={bandTop + 17.5} textAnchor="middle" fill={C.tealLight} fontFamily={FM} fontSize="9" letterSpacing="0.12em">SPREAD STRIP</text>
+      </g>
+      {/* y-axis spine + max-depth reference (matches the other four charts) */}
+      <line x1={spineX} x2={spineX} y1={top} y2={bottom} stroke={C.border} strokeWidth="1" />
+      <line x1={barX + barMax} x2={barX + barMax} y1={top} y2={bottom} stroke={C.border} strokeWidth="1" strokeOpacity="0.5" strokeDasharray="2 5" />
+      {/* depth ladder — one row per live strike; bar ∝ live on-chain book depth */}
+      <g className="wf-stack" style={{ transformBox: "fill-box", transformOrigin: "left center" }}>
+        {levels.map((l, i) => {
+          const cyRow = top + i * rowH + rowH / 2;
+          const w = Math.max(10, l.depth * barMax);
+          const op = l.forward ? 0.95 : l.inRange ? 0.52 : 0.22;
+          return (
+            <g key={l.px}>
+              <text x={labX} y={cyRow + 3.5} textAnchor="start" fill={l.forward ? C.textPrimary : C.textMuted} fontFamily={FM} fontSize="11" fontWeight={l.forward ? 600 : 400}>{l.px}</text>
+              <rect x={barX} y={cyRow - 6} width={w} height={12} rx={2.5} fill={C.tealLight} fillOpacity={op} />
+              {l.forward && (
+                <text x={barX + w + 10} y={cyRow + 3.5} textAnchor="start" fill={C.tealLight} fontFamily={FM} fontSize="10.5" letterSpacing="0.03em">forward · ask $0.41</text>
+              )}
+            </g>
+          );
+        })}
+      </g>
+      <text x={(cPlotL + cPlotR) / 2} y={CH - 9} textAnchor="middle" fill={C.textMuted} fontFamily={FM} fontSize="9.5" letterSpacing="0.05em">{caption}</text>
+    </svg>
+  );
+}
+
+/* Volatility — the implied-vol smile across strikes (lower at ATM, higher in the
+   wings) traded against the flat realized line: the spread is the vol edge. */
+function VolatilityViz({ caption }: { caption: string }) {
+  const smile = [80, 62, 51, 46, 52, 63, 74];
+  const realized = 52;
+  const atmIdx = 3;
+  const n = smile.length;
+  return (
+    <ChartFrame
+      id="vol"
+      caption={caption}
+      yMin={30}
+      yMax={90}
+      yTicks={[{ v: 30, label: "30%" }, { v: 60, label: "60%" }, { v: 90, label: "90%" }]}
+      xLabels={["56k", "60k", "62k", "64k", "66k", "68k", "72k"]}
+    >
+      {(cy, fillId) => (
+        <>
+          {/* realized vol — the flat line the smile is traded against */}
+          {seriesPaths({ values: Array(n).fill(realized), dashed: true, op: 0.5 }, cy, fillId, "rv")}
+          <text className="feat-dash" x={cPlotR - 2} y={cy(realized) - 7} textAnchor="end" fill={C.textMuted} fontFamily={FM} fontSize="9.5">realized {realized}%</text>
+          {/* the implied-vol smile */}
+          {seriesPaths({ values: smile, bold: true, delay: 0.16 }, cy, fillId, "iv")}
+          {/* ATM minimum — the cheapest vol */}
+          <g className="feat-end" style={{ animationDelay: "0.3s" }}>
+            <line x1={cx(atmIdx, n)} x2={cx(atmIdx, n)} y1={cy(smile[atmIdx])} y2={cPlotB} stroke={C.tealLight} strokeWidth="1" strokeOpacity="0.35" strokeDasharray="3 4" />
+            <circle cx={cx(atmIdx, n)} cy={cy(smile[atmIdx])} r={3.6} fill={C.tealLight} />
+            <text x={cx(atmIdx, n)} y={cy(smile[atmIdx]) - 11} textAnchor="middle" fill={C.textPrimary} fontFamily={FM} fontSize="11" fontWeight={600}>ATM {smile[atmIdx]}%</text>
+          </g>
+        </>
+      )}
+    </ChartFrame>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+
+type SurfaceId = "deepbook" | "vol" | "distribution" | "basket" | "risk" | "ppn";
+
+const SURFACES: Array<{
+  id: SurfaceId;
+  eyebrow: string;
+  title: string;
+  body: string;
+  href: string;
+  Icon: (p: IconProps) => React.ReactElement;
+}> = [
+  { id: "distribution", eyebrow: "Options & curves", title: "Distribution Markets", body: "A live BTC options chain of $1 strikes — or set μ and σ to trade your whole distribution view. Priced live off DeepBook, settled on Sui.", href: "/app/distribution", Icon: IconCurve },
+  { id: "vol", eyebrow: "Implied vs realized", title: "Volatility", body: "Trade the implied-vol smile against realized — straddles, strangles, butterflies, condors — built from real DeepBook range strips, with a delta-neutral hedge.", href: "/app/volatility", Icon: IconVol },
+  { id: "deepbook", eyebrow: "Built on DeepBook", title: "Range Strips", body: "Mint a strip of real DeepBook Predict range options — pin, range plateau, breakout and more — priced live off the on-chain order book, in one signature.", href: "/app/deepbook", Icon: IconCube },
+  { id: "ppn", eyebrow: "Principal protected", title: "Protected Notes", body: "The floor earns itself back in the PLP house pool, the remainder buys an upside range strip — both in one transaction.", href: "/app/ppn", Icon: IconShield },
+  { id: "basket", eyebrow: "Diversified events", title: "Baskets", body: "Curated baskets of uncorrelated event markets, pooled so the basket resolves with far less variance than any single leg.", href: "/app/basket", Icon: IconBasket },
+  { id: "risk", eyebrow: "Conviction slices", title: "Risk Slices", body: "An event basket sliced into senior, mezzanine, and junior — senior is paid first, junior takes first loss for the biggest multiple.", href: "/app/tranche", Icon: IconSlices },
+];
+
+type Showcase = {
+  id: SurfaceId;
+  eyebrow: string;
+  title: string;
+  href: string;
+  Icon: (p: IconProps) => React.ReactElement;
+  lead: string;
+  specs: string[];
+  caption: string;
+  legend: Array<{ name: string; dashed?: boolean; op?: number }>;
+  beta?: boolean;
+};
+
+const RISK_SLICE = {
+  lead: "Take any basket and slice it into senior, mezzanine, and junior tranches — senior is paid first, junior takes first loss for the biggest multiple.",
+  specs: ["Senior: defensive, paid first", "Junior: first loss, biggest multiple", "Tranches of the same event baskets"],
+  href: "/app/tranche",
+};
+
+const SHOWCASE: Showcase[] = [
+  {
+    id: "distribution",
+    eyebrow: "Options & curves",
+    title: "Distribution Markets",
+    href: "/app/distribution",
+    Icon: IconCurve,
+    lead: "Trade where BTC lands — a live options chain of $1 strikes, or set your own μ and σ to trade the whole distribution curve.",
+    specs: ["Options chain: $1 binary calls and puts at every strike", "Curve view: set μ and σ, mint the matching range strip", "Priced live off DeepBook, settles on Sui"],
+    caption: "Each bar is a $1 strike — together they trace your view",
+    legend: [{ name: "Strikes", op: 0.5 }, { name: "Your view" }, { name: "Market", op: 0.3 }],
+  },
+  {
+    id: "vol",
+    eyebrow: "Implied vs realized",
+    title: "Volatility",
+    href: "/app/volatility",
+    Icon: IconVol,
+    lead: "Trade the implied-vol smile against realized — straddles, strangles, butterflies, and condors built from real DeepBook range strips, with a delta-neutral hedge.",
+    specs: ["Implied-vol smile across every strike", "Straddle, strangle, butterfly, condor structures", "Optional delta-neutral perp hedge"],
+    caption: "Implied-vol smile traded against realized vol",
+    legend: [{ name: "Implied vol" }, { name: "Realized", dashed: true, op: 0.55 }],
+  },
+  {
+    id: "deepbook",
+    eyebrow: "Built on DeepBook",
+    title: "Range Strips",
+    href: "/app/deepbook",
+    Icon: IconCube,
+    lead: "Mint a strip of real DeepBook Predict range options — pin, range plateau, breakout and more — priced live off the on-chain order book, in one signature.",
+    specs: ["Priced live off the DeepBook book", "Pin, Range Plateau, Breakout and more", "Every rolling BTC expiry, sub-hour to weeks"],
+    caption: "A range strip minted off the live DeepBook Predict book",
+    legend: [{ name: "Book depth", op: 0.5 }, { name: "Minted strip" }],
+  },
+  {
+    id: "ppn",
+    eyebrow: "Floor target",
+    title: "Protected Notes",
+    href: "/app/ppn",
+    Icon: IconShield,
+    lead: "Set your floor: it earns itself back in the PLP house pool while the rest buys upside — principal protected.",
+    specs: ["USDC principal sleeve", "Downside floored at your chosen level", "Full upside above the floor"],
+    caption: "Note held at its floor while the underlying keeps the upside",
+    legend: [{ name: "Note value" }, { name: "Underlying", op: 0.42 }, { name: "Floor", dashed: true, op: 0.75 }],
+  },
+  {
+    id: "basket",
+    eyebrow: "Diversified events",
+    title: "Baskets",
+    beta: true,
+    href: "/app/basket",
+    Icon: IconBasket,
+    lead: "Curated baskets of uncorrelated event markets — pooled so the whole basket resolves with far less variance than any single bet.",
+    specs: ["Diversified Polymarket event markets", "Live CLOB pricing, NAV per basket", "One click in, settles on Sui"],
+    caption: "Noisy component events vs the smooth pooled basket NAV",
+    legend: [{ name: "Components", op: 0.3 }, { name: "Basket NAV" }],
+  },
+];
+
+function FeatureRow({ item, index }: { item: Showcase; index: number }) {
+  const reverse = index % 2 === 1;
+  const [riskOpen, setRiskOpen] = useState(false);
+  return (
+    <div className={`feat-row scroll-fade${reverse ? " is-rev" : ""}`}>
+      <div className="feat-panel">
+        {item.id === "deepbook" && <DeepBookViz caption={item.caption} />}
+        {item.id === "vol" && <VolatilityViz caption={item.caption} />}
+        {item.id === "basket" && <BasketChart caption={item.caption} />}
+        {item.id === "risk" && <WaterfallViz caption={item.caption} />}
+        {item.id === "ppn" && <ProtectedViz caption={item.caption} />}
+        {item.id === "distribution" && <DistributionViz caption={item.caption} />}
+        <div className="feat-legend">
+          {item.legend.map((l) => (
+            <span key={l.name}>
+              <i className={l.dashed ? "dash" : ""} style={{ opacity: l.op ?? 1 }} />
+              {l.name}
+            </span>
+          ))}
+        </div>
+      </div>
+      <div className="feat-text">
+        <div className="feat-tag"><item.Icon size={16} />{item.eyebrow}</div>
+        <h3>{item.title}{item.beta && <sup style={{ marginLeft: 7, fontFamily: FM, fontSize: 10, fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase", color: C.tealLight, verticalAlign: "super" }}>beta</sup>}</h3>
+        <p>{item.lead}</p>
+        <ul className="feat-specs">
+          {item.specs.map((s) => (
+            <li key={s}>{s}</li>
+          ))}
+        </ul>
+        <Link className="feat-link" href={item.href}>
+          Open {item.title} <span className="lp-ar"><IconArrow /></span>
+        </Link>
+        {item.id === "basket" && (
+          <div style={{ marginTop: 20, borderTop: `0.5px solid ${C.border}`, paddingTop: 16 }}>
+            <button onClick={() => setRiskOpen((o) => !o)} aria-expanded={riskOpen} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", background: "transparent", border: 0, cursor: "pointer", padding: 0, textAlign: "left" }}>
+              <span style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+                <span style={{ color: C.textMuted, fontFamily: FM, fontSize: 9, letterSpacing: "0.14em", textTransform: "uppercase" }}>Built on baskets</span>
+                <span style={{ color: C.textPrimary, fontFamily: FD, fontSize: 15, fontWeight: 600 }}>Risk Slices</span>
+              </span>
+              <span style={{ color: C.tealLight, fontFamily: FM, fontSize: 17, lineHeight: 1, transform: riskOpen ? "rotate(90deg)" : "none", transition: "transform 0.2s ease" }}>›</span>
+            </button>
+            <div style={{ overflow: "hidden", maxHeight: riskOpen ? 680 : 0, opacity: riskOpen ? 1 : 0, transition: "max-height 0.28s ease, opacity 0.22s ease" }}>
+              <p style={{ color: C.textSecondary, fontFamily: FS, fontSize: 13.5, lineHeight: 1.55, margin: "12px 0 10px" }}>{RISK_SLICE.lead}</p>
+              <div style={{ margin: "2px 0 14px", border: `0.5px solid ${C.border}`, borderRadius: 12, padding: "14px 16px 6px", background: C.panelGradient }}>
+                <WaterfallViz caption="Capital stack and loss waterfall" />
+              </div>
+              <ul className="feat-specs" style={{ marginBottom: 12 }}>
+                {RISK_SLICE.specs.map((sp) => (<li key={sp}>{sp}</li>))}
+              </ul>
+              <Link className="feat-link" href={RISK_SLICE.href}>Open Risk Slices <span className="lp-ar"><IconArrow /></span></Link>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const PIPE: Array<{ name: string; sub: string; desc: string; Icon: (p: IconProps) => React.ReactElement }> = [
+  {
+    name: "Live pricing",
+    sub: "DeepBook Predict order book",
+    desc: "Every product is quoted straight off the live DeepBook Predict order book, so the price reflects real market probability — not a model's guess.",
+    Icon: IconSignal,
+  },
+  {
+    name: "Quote engine",
+    sub: "Depth-weighted bands",
+    desc: "We slice the payoff into bands and weight each leg by real book depth, so the number you see is what assembling the position actually costs.",
+    Icon: IconBasket,
+  },
+  {
+    name: "USDC collateral",
+    sub: "Net of quote fees",
+    desc: "Post USDC as collateral, net of a small quote fee — no bridging, no wrapped assets, no idle margin parked off-chain.",
+    Icon: IconCoin,
+  },
+  {
+    name: "Sui settlement",
+    sub: "Pelagos USDC package",
+    desc: "The position mints and settles on-chain through the Pelagos USDC package — custody-free, and final the moment your wallet signs.",
+    Icon: IconCube,
+  },
+];
+
+/* ------------------------------------------------------------------ */
+
+/** A live continuous (Normal mu/sigma) forward, used to give the hero chart a
+ *  real bell-shaped distribution when the discrete-market pool has none. */
+type ContForward = { question?: string; underlying?: string; mu: number; sigma: number; volume_usd?: number; backing_usdc?: number; pool_liquidity_usdc?: number };
+
+/** Synthesize a DistributionCandidate whose reference_curve is a Normal PDF
+ *  sampled across 7 bands — a clean bell — from a continuous forward market. */
+function bellFromForward(m: ContForward): DistributionCandidate {
+  const BANDS = 7;
+  const K = 2.2;
+  const sigma = m.sigma || Math.max(1e-6, Math.abs(m.mu) * 0.1);
+  const lo = m.mu - K * sigma;
+  const hi = m.mu + K * sigma;
+  const raw = Array.from({ length: BANDS }, (_, i) => {
+    const x = lo + ((hi - lo) * i) / (BANDS - 1);
+    const z = (x - m.mu) / sigma;
+    return Math.exp(-0.5 * z * z);
+  });
+  const sum = raw.reduce((a, b) => a + b, 0) || 1;
+  const curve = raw.map((v) => v / sum);
+  return {
+    id: `cont-${m.question ?? m.underlying ?? "fwd"}`,
+    title: m.question ?? m.underlying ?? "Price distribution",
+    category: "crypto",
+    category_confidence: 1,
+    distribution_fit: "high",
+    outcome_type: "price_level",
+    event_slug: null,
+    end_date_iso: null,
+    days_to_resolution: 7,
+    aggregate_volume_usd: m.volume_usd ?? 0,
+    // Depth = the market's REAL pool backing (live CLOB depth / 24h volume),
+    // distinct from quoting volume — never the same number as volume.
+    aggregate_depth_usd:
+      m.backing_usdc ?? m.pool_liquidity_usdc ?? (m.volume_usd && m.volume_usd > 0 ? Math.round(m.volume_usd * 0.01) : 250_000),
+    avg_spread: null,
+    band_count: BANDS,
+    launch_score: 90,
+    launch_quality: "strong",
+    reasons: [],
+    pricing_source: "polymarket_gamma_clob",
+    clob_book_count: BANDS,
+    gamma_liquidity_count: BANDS,
+    bands: [],
+    reference_curve: curve,
+    liquidity_curve: curve,
+    fetched_at: new Date().toISOString(),
+  };
+}
+
+/** The live BTC market-implied distribution served by GET /api/deepbook/distribution
+ *  (range-plateau strip on a longer-dated oracle, normalized band probabilities). */
+type LiveDist = {
+  source: string;
+  forward_usd: number;
+  tenor_label: string;
+  atm_iv: number;
+  bands: Array<{ lower_usd: number; higher_usd: number; prob: number }>;
+};
+
+/** Adapt the live DeepBook distribution into the candidate shape the hero chart
+ *  renders — real on-chain band probabilities, not a synthesized bell. */
+function candidateFromLiveDist(d: LiveDist): DistributionCandidate {
+  const curve = d.bands.map((b) => b.prob);
+  const n = d.bands.length;
+  return {
+    id: "deepbook-live",
+    title: `BTC/USD · ${d.tenor_label} forward`,
+    category: "crypto",
+    category_confidence: 1,
+    distribution_fit: "high",
+    outcome_type: "price_level",
+    event_slug: null,
+    end_date_iso: null,
+    days_to_resolution: 0,
+    aggregate_volume_usd: 0,
+    aggregate_depth_usd: 0,
+    avg_spread: null,
+    band_count: n,
+    launch_score: 95,
+    launch_quality: "strong",
+    reasons: [],
+    pricing_source: "polymarket_gamma_clob",
+    clob_book_count: n,
+    gamma_liquidity_count: n,
+    bands: [],
+    reference_curve: curve,
+    liquidity_curve: curve,
+    fetched_at: new Date().toISOString(),
+  };
+}
+
+export default function HomePage() {
+  const [candidates, setCandidates] = useState<DistributionCandidate[]>([]);
+  const [forward, setForward] = useState<ContForward | null>(null);
+  const [liveDist, setLiveDist] = useState<LiveDist | null>(null);
+  const [chartReady, setChartReady] = useState(false);
+
+  useGlobalScrollFade();
+
+  // Hero chart: the live BTC market-implied distribution straight off DeepBook
+  // Predict. Fetched on mount and re-polled so the curve stays live.
+  useEffect(() => {
+    let cancelled = false;
+    const loadLive = () =>
+      fetch(`${BACKEND_URL}/api/deepbook/distribution`, { cache: "no-store" })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((body) => {
+          if (cancelled || !body || !Array.isArray(body.bands) || body.bands.length === 0) return;
+          setLiveDist(body as LiveDist);
+          setChartReady(true);
+        })
+        .catch(() => {});
+    loadLive();
+    const poll = window.setInterval(loadLive, 25_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(poll);
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    // Fallback sources (used only if the live DeepBook distribution is slow/down)
+    // plus a short timeout so the curve always draws in once on its final shape.
+    const timer = setTimeout(() => {
+      if (!cancelled) setChartReady(true);
+    }, 2200);
+    fetchDistributionCandidates({ limit: 4, refresh: false })
+      .then((result) => {
+        if (!cancelled) setCandidates(result.candidates);
+      })
+      .catch(() => {});
+    fetch(`${BACKEND_URL}/api/distribution/continuous/markets`, { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((body) => {
+        if (cancelled || !body) return;
+        const list = (body.markets ?? []) as ContForward[];
+        const best = list.find((m) => Number.isFinite(m.mu) && Number.isFinite(m.sigma) && m.sigma > 0) ?? null;
+        if (best) setForward(best);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, []);
+
+  // Hero distribution, in priority order:
+  //   1. the LIVE DeepBook Predict implied distribution (real on-chain band prices),
+  //   2. a multi-band Polymarket candidate, 3. a Normal bell from a live forward,
+  //   4. the top-ranked candidate — so the curve is always a real distribution.
+  const candidate =
+    (liveDist ? candidateFromLiveDist(liveDist) : null) ??
+    candidates.find((c) => (c.band_count ?? 0) >= 5) ??
+    (forward ? bellFromForward(forward) : null) ??
+    candidates[0] ??
+    null;
+
+  return (
+    <>
+      <Header />
+      <PageFrame wide>
+        <style>{`
+          .lp-shell { max-width: 1200px; margin: 0 auto; }
+
+          .lp-section { padding: 104px 0; border-top: 0.5px solid ${C.border}; }
+          /* first section after the hero sits closer so there's no dead gap */
+          #products { padding-top: 72px; }
+          .lp-eyebrow { color: ${C.tealLight}; font-family: ${FM}; font-size: 10.5px; letter-spacing: 0.18em; text-transform: uppercase; }
+          .lp-head { max-width: 660px; }
+          .lp-head h2 { margin: 14px 0 0; color: ${C.textPrimary}; font-family: ${FD}; font-size: 28px; line-height: 1.14; letter-spacing: -0.025em; font-weight: 600; text-wrap: balance; }
+          .lp-head p { margin: 14px 0 0; color: ${C.textSubtle}; font-family: ${FS}; font-size: 15px; line-height: 1.6; max-width: 560px; text-wrap: pretty; }
+
+          /* ---- hero ---- */
+          .lp-hero { display: grid; grid-template-columns: minmax(0, 0.92fr) minmax(500px, 1fr); gap: 60px; align-items: center; min-height: min(760px, 80vh); padding: 36px 0 52px; }
+          .lp-hero-title { color: ${C.textPrimary}; font-family: ${FD}; font-size: clamp(44px, 4.8vw, 62px); line-height: 1.04; letter-spacing: -0.04em; font-weight: 600; font-feature-settings: "ss01", "cv05"; margin: 16px 0 0; text-wrap: balance; }
+          .lp-hero-title em { font-style: normal; color: ${C.tealLight}; }
+          .lp-hero-sub { color: ${C.textSubtle}; font-family: ${FS}; font-size: 16px; line-height: 1.65; max-width: 520px; margin: 20px 0 0; text-wrap: pretty; }
+          .lp-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 32px; }
+          .lp-btn { height: 44px; display: inline-flex; align-items: center; gap: 8px; justify-content: center; border-radius: 9px; padding: 0 20px; font-family: ${FD}; font-size: 14px; font-weight: 600; text-decoration: none; transition: transform 0.18s ${EASE}, background 0.18s ${EASE}, border-color 0.18s ${EASE}, box-shadow 0.18s ${EASE}; }
+          .lp-btn-primary { background: ${C.tealLight}; color: #06131f; border: 0.5px solid ${C.tealLight}; box-shadow: 0 8px 28px ${C.tealLight}26; }
+          .lp-btn-primary:hover { transform: translateY(-2px); background: ${C.teal}; box-shadow: 0 14px 34px ${C.tealLight}3a; }
+          .lp-btn-primary .lp-ar { transition: transform 0.18s ${EASE}; }
+          .lp-btn-primary:hover .lp-ar { transform: translateX(3px); }
+          .lp-btn-ghost { background: ${C.card}; color: ${C.textPrimary}; border: 0.5px solid ${C.border}; }
+          .lp-btn-ghost:hover { border-color: ${C.borderHover}; background: ${C.cardHover}; transform: translateY(-2px); }
+          .lp-trust { display: inline-flex; align-items: center; margin-top: 32px; color: ${C.textDim}; font-family: ${FM}; font-size: 11px; letter-spacing: 0.05em; }
+          .lp-trust span { padding: 0 16px; border-left: 0.5px solid ${C.border}; }
+          .lp-trust span:first-child { padding-left: 0; border-left: 0; }
+
+          /* ---- hero terminal ---- */
+          .lp-term { border: 0.5px solid ${C.border}; background: ${C.panelGradient}; border-radius: 16px; padding: 24px 24px 20px; box-shadow: 0 30px 80px rgba(0,0,0,0.34); }
+          .lp-term-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+          .lp-term-eyebrow { display: block; color: ${C.textMuted}; font-family: ${FM}; font-size: 9.5px; letter-spacing: 0.18em; text-transform: uppercase; margin-bottom: 7px; }
+          .lp-term-name { color: ${C.textPrimary}; font-family: ${FD}; font-size: 16px; font-weight: 600; letter-spacing: -0.015em; display: block; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+          .lp-live { display: inline-flex; align-items: center; gap: 7px; flex-shrink: 0; color: ${C.textMuted}; font-family: ${FM}; font-size: 10.5px; letter-spacing: 0.08em; }
+          .lp-live i { width: 6px; height: 6px; border-radius: 50%; background: ${C.textMuted}; }
+          .lp-live i.is-live { background: ${C.tealLight}; animation: lpPing 2.6s ${EASE} infinite; }
+          @keyframes lpPing { 0% { box-shadow: 0 0 0 0 ${C.tealLight}55; } 70% { box-shadow: 0 0 0 6px ${C.tealLight}00; } 100% { box-shadow: 0 0 0 0 ${C.tealLight}00; } }
+
+          .lp-curve { width: 100%; display: block; margin: 14px 0 6px; }
+          .lp-line { filter: drop-shadow(0 1px 7px ${C.tealLight}3a); stroke-dasharray: 1; stroke-dashoffset: 0; animation: lpDraw 1.7s ${EASE} forwards; }
+          @keyframes lpDraw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+          .lp-area { opacity: 0; animation: lpFade 1.1s ${EASE} 0.5s forwards; }
+          @keyframes lpFade { to { opacity: 1; } }
+          .lp-stage .lp-guide { opacity: 0; transition: opacity 0.16s ${EASE}; }
+          .lp-stage .lp-val { opacity: 0; transition: opacity 0.16s ${EASE}; }
+          .lp-stage .lp-val.is-peak { opacity: 1; }
+          .lp-stage .lp-dot { transform-box: fill-box; transform-origin: center; transition: transform 0.16s ${EASE}; }
+          .lp-stage:hover .lp-guide { opacity: 0.36; }
+          .lp-stage:hover .lp-val { opacity: 1; }
+          .lp-stage:hover .lp-dot { transform: scale(1.45); }
+
+          .lp-readout { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 0.5px solid ${C.border}; margin-top: 14px; padding-top: 16px; }
+          .lp-readout > div { padding-left: 18px; border-left: 0.5px solid ${C.border}; display: flex; flex-direction: column; gap: 6px; }
+          .lp-readout > div:first-child { padding-left: 0; border-left: 0; }
+          .lp-readout .k { color: ${C.textMuted}; font-family: ${FM}; font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase; }
+          .lp-readout .v { color: ${C.textPrimary}; font-family: ${FD}; font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+
+          /* ---- live stat strip (single contained panel) ---- */
+
+          /* ---- product showcase (scroll-driven feature rows) ---- */
+          .lp-showcase { display: grid; gap: 56px; margin-top: 64px; }
+          /* clean scroll fade — opacity scrubbed by JS via --reveal */
+          .scroll-fade { opacity: var(--reveal, 1); will-change: opacity; }
+          /* product rows rise + settle as they scroll into the reading band:
+             the chart panel and copy ease up by slightly different amounts so the
+             pair feels alive, not a single flat block — scrubbed off --reveal. */
+          .feat-row { display: grid; grid-template-columns: 1.06fr 0.94fr; gap: 60px; align-items: center; }
+          .feat-row .feat-panel, .feat-row .feat-text { transition: transform 0.12s linear; will-change: transform; }
+          .feat-row .feat-panel { transform: translateY(calc((1 - var(--reveal, 1)) * 40px)); }
+          .feat-row .feat-text { transform: translateY(calc((1 - var(--reveal, 1)) * 20px)); }
+          .feat-row.is-rev .feat-panel { order: 2; }
+          .feat-row.is-rev .feat-text { order: 1; }
+          .wf-stack { transform: scaleY(0); }
+          .is-drawn .wf-stack { animation: wfGrow 0.8s ${EASE} forwards; }
+          @keyframes wfGrow { to { transform: scaleY(1); } }
+          .wf-lab { opacity: 0; }
+          .is-drawn .wf-lab { animation: lpFade 0.6s ${EASE} forwards; }
+
+          .feat-panel { border: 0.5px solid ${C.border}; background: ${C.panelGradient}; border-radius: 16px; padding: 22px 22px 18px; box-shadow: 0 28px 70px rgba(0,0,0,0.32); }
+          .feat-panel-head { display: flex; align-items: center; justify-content: space-between; }
+          .feat-eyebrow { color: ${C.textMuted}; font-family: ${FM}; font-size: 9.5px; letter-spacing: 0.18em; text-transform: uppercase; }
+          .feat-chart { width: 100%; display: block; margin: 8px 0 0; }
+          .feat-line { stroke-dasharray: 1; stroke-dashoffset: 1; filter: drop-shadow(0 1px 6px ${C.tealLight}26); }
+          .is-drawn .feat-line { animation: lpDraw 1.7s ${EASE} forwards; }
+          .feat-area { opacity: 0; }
+          .is-drawn .feat-area { animation: lpFade 1.1s ${EASE} forwards; }
+          .feat-dash { opacity: 0; }
+          .is-drawn .feat-dash { animation: lpFade 0.9s ${EASE} forwards; }
+          .feat-end { opacity: 0; }
+          .is-drawn .feat-end { animation: lpFade 0.6s ${EASE} forwards; }
+          .feat-legend { display: flex; gap: 20px; margin-top: 12px; padding-top: 14px; border-top: 0.5px solid ${C.border}; }
+          .feat-legend span { display: inline-flex; align-items: center; gap: 8px; color: ${C.textMuted}; font-family: ${FM}; font-size: 10px; letter-spacing: 0.04em; }
+          .feat-legend i { width: 16px; height: 2px; border-radius: 2px; background: ${C.tealLight}; flex: none; }
+          .feat-legend i.dash { background: linear-gradient(90deg, ${C.tealLight} 55%, transparent 0); background-size: 6px 100%; }
+
+          .feat-tag { display: inline-flex; align-items: center; gap: 9px; color: ${C.tealLight}; font-family: ${FM}; font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase; }
+          .feat-text h3 { color: ${C.textPrimary}; font-family: ${FD}; font-size: 34px; line-height: 1.04; letter-spacing: -0.032em; font-weight: 600; margin: 16px 0 0; }
+          .feat-text p { color: ${C.textSubtle}; font-family: ${FS}; font-size: 15px; line-height: 1.62; margin: 16px 0 0; max-width: 440px; }
+          .feat-specs { list-style: none; margin: 24px 0 0; display: grid; gap: 11px; }
+          .feat-specs li { display: flex; align-items: center; gap: 13px; color: ${C.textSubtle}; font-family: ${FS}; font-size: 14px; }
+          .feat-specs li::before { content: ""; width: 14px; height: 1.5px; background: ${C.tealLight}; flex: none; border-radius: 2px; }
+          .feat-link { display: inline-flex; align-items: center; gap: 8px; margin-top: 28px; color: ${C.tealLight}; font-family: ${FD}; font-size: 13.5px; font-weight: 600; text-decoration: none; }
+          .feat-link .lp-ar { transition: transform 0.18s ${EASE}; }
+          .feat-link:hover .lp-ar { transform: translateX(4px); }
+
+          /* ---- flow stages — full-width horizontal pipeline (4-up) ---- */
+          .lp-flow { display: flex; align-items: stretch; gap: 6px; margin-top: 52px; }
+          .flow-stage { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; padding: 28px 26px 30px; border: 0.5px solid ${C.border}; border-radius: 16px; background: ${C.panelGradient}; transition: transform 0.16s ${EASE}, border-color 0.16s ${EASE}, box-shadow 0.16s ${EASE}; will-change: transform; }
+          .flow-stage:hover { transform: translateY(-4px); border-color: ${C.tealLight}40; box-shadow: 0 18px 44px rgba(0,0,0,0.32); }
+          .flow-node { width: 48px; height: 48px; border-radius: 13px; display: grid; place-items: center; border: 0.5px solid ${C.tealLight}40; background: ${C.surface}; color: ${C.tealLight}; flex: none; box-shadow: 0 6px 18px ${C.tealLight}14; margin-bottom: 22px; }
+          .flow-name { display: flex; align-items: baseline; gap: 11px; color: ${C.textPrimary}; font-family: ${FD}; font-size: 17px; font-weight: 600; letter-spacing: -0.015em; }
+          .flow-idx { color: ${C.tealLight}; opacity: 0.85; font-family: ${FM}; font-size: 11.5px; letter-spacing: 0.18em; }
+          .flow-sub { color: ${C.textMuted}; font-family: ${FM}; font-size: 11px; letter-spacing: 0.04em; margin-top: 9px; }
+          .flow-desc { color: ${C.textSubtle}; font-family: ${FS}; font-size: 13px; line-height: 1.62; margin: 16px 0 0; }
+          .flow-arrow { flex: none; align-self: center; display: grid; place-items: center; color: ${C.textDim}; opacity: 0.4; }
+
+          /* ---- closing CTA (large bordered panel, fills the width) ---- */
+          .lp-cta { text-align: center; }
+          /* Quiet, evenly-blended surface — a hair above the page colour with a
+             soft even hairline and nothing else. No glow, no accent line, no
+             drop shadow: it reads as a calm contained region, not a card that
+             pops off the page. Uniform fill means every edge stays clean. */
+          .lp-cta-panel { position: relative; border: 1px solid ${C.border}; border-radius: 24px; background: ${C.surface}; padding: 92px 64px 96px; overflow: hidden; }
+          .lp-cta-inner { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; align-items: center; }
+          .lp-cta-inner h2 { margin: 16px 0 0; color: ${C.textPrimary}; font-family: ${FD}; font-size: 54px; line-height: 1.04; letter-spacing: -0.038em; font-weight: 600; font-feature-settings: "ss01"; text-wrap: balance; }
+          .lp-cta-inner p { margin: 22px 0 0; color: ${C.textSubtle}; font-family: ${FS}; font-size: 16.5px; line-height: 1.6; max-width: 560px; text-wrap: pretty; }
+          .lp-cta-actions { justify-content: center; margin-top: 40px; }
+          .lp-cta-actions .lp-btn { height: 54px; padding: 0 30px; font-size: 15px; border-radius: 11px; }
+          .lp-cta-trust { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; margin-top: 44px; color: ${C.textDim}; font-family: ${FM}; font-size: 11px; letter-spacing: 0.06em; }
+          .lp-cta-trust span { padding: 0 18px; border-left: 0.5px solid ${C.border}; }
+          .lp-cta-trust span:first-child { padding-left: 0; border-left: 0; }
+
+          /* ---- footer ---- */
+          .lp-footer { border-top: 0.5px solid ${C.border}; padding: 64px 0 0; }
+          .lp-foot-main { display: grid; grid-template-columns: 1.5fr auto; gap: 40px; align-items: start; }
+          .lp-footer-brand strong { display: flex; align-items: center; gap: 10px; color: ${C.textPrimary}; font-family: ${FD}; font-size: 14px; font-weight: 600; letter-spacing: 0.16em; }
+          .lp-footer-brand p { color: ${C.textMuted}; font-family: ${FS}; font-size: 13.5px; line-height: 1.6; margin: 16px 0 0; max-width: 320px; }
+          .lp-fmark { width: 24px; height: 24px; border-radius: 7px; display: grid; place-items: center; border: 0.5px solid ${C.tealLight}55; background: linear-gradient(145deg, ${C.tealLight}22, ${C.blue}10); }
+          .lp-foot-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; }
+          .lp-fcol h5 { color: ${C.textMuted}; font-family: ${FM}; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; margin: 0 0 18px; }
+          .lp-fcol a { display: block; color: ${C.textSubtle}; font-family: ${FS}; font-size: 13.5px; text-decoration: none; padding: 7px 0; transition: color 0.16s ${EASE}; }
+          .lp-fcol a:hover { color: ${C.tealLight}; }
+          .lp-footer-base { margin-top: 56px; padding: 22px 0 8px; border-top: 0.5px solid ${C.border}; display: flex; align-items: center; justify-content: space-between; gap: 16px; color: ${C.textMuted}; font-family: ${FM}; font-size: 11px; letter-spacing: 0.04em; flex-wrap: wrap; }
+
+          .lp-btn:focus-visible, .feat-link:focus-visible, .lp-spec-row:focus-visible, .lp-fcol a:focus-visible, .lp-close-cta:focus-visible {
+            outline: 2px solid ${C.tealLight}; outline-offset: 3px; border-radius: 9px;
+          }
+
+          @media (prefers-reduced-motion: reduce) {
+            .lp-line { animation: none; stroke-dashoffset: 0; }
+            .lp-area { animation: none; opacity: 1; }
+            .lp-live i.is-live { animation: none; }
+            .scroll-fade { opacity: 1; }
+            .feat-row .feat-panel, .feat-row .feat-text, .flow-stage { transform: none; }
+            .feat-line { animation: none; stroke-dashoffset: 0; }
+            .feat-area, .feat-dash, .feat-end { animation: none; opacity: 1; }
+            .wf-stack { animation: none; transform: none; }
+            .wf-lab { animation: none; opacity: 1; }
+          }
+
+          @media (max-width: 1080px) {
+            .lp-hero { grid-template-columns: 1fr; gap: 40px; padding-top: 40px; }
+            .feat-row { grid-template-columns: 1fr; gap: 28px; }
+            .feat-row.is-rev .feat-panel { order: 1; }
+            .feat-row.is-rev .feat-text { order: 2; }
+            .lp-foot-main { grid-template-columns: 1fr; gap: 32px; }
+            .lp-flow { flex-wrap: wrap; gap: 12px; }
+            .flow-stage { flex: 1 1 calc(50% - 6px); }
+            .flow-arrow { display: none; }
+            .lp-cta-panel { padding: 64px 28px 68px; }
+            .lp-cta-inner h2 { font-size: 38px; }
+          }
+          @media (max-width: 560px) {
+            .flow-stage { flex-basis: 100%; }
+          }
+          @media (max-width: 620px) {
+            .lp-readout { grid-template-columns: repeat(2, 1fr); gap: 16px 0; }
+            .lp-readout > div:nth-child(3) { border-left: 0; padding-left: 0; }
+            .lp-trust { flex-wrap: wrap; gap: 8px 0; }
+          }
+        `}</style>
+
+        <div className="lp-shell">
+          {/* ---------------- HERO ---------------- */}
+          <section className="lp-hero">
+            <div>
+              <div className="lp-eyebrow">Sui testnet · DeepBook Predict</div>
+              <h1 className="lp-hero-title">
+                Structured products on <em>live market probability</em>
+              </h1>
+              <p className="lp-hero-sub">
+                Pelagos turns live DeepBook Predict pricing into composable structured products — range
+                strips, distribution curves, baskets, risk slices, and protected notes — each
+                collateralized in USDC and settled on Sui.
+              </p>
+              <div className="lp-actions">
+                <Link className="lp-btn lp-btn-primary" href="/app/portfolio">
+                  Launch app <span className="lp-ar"><IconArrow /></span>
+                </Link>
+                <a className="lp-btn lp-btn-ghost" href="#products">
+                  Explore the products
+                </a>
+              </div>
+              <div className="lp-trust">
+                <span>Live DeepBook pricing</span>
+                <span>USDC collateral</span>
+                <span>Settled on Sui</span>
+              </div>
+            </div>
+
+            <CurveTerminal candidate={candidate} ready={chartReady} />
+          </section>
+
+          {/* ---------------- PRODUCT SHOWCASE (scroll-driven) ---------------- */}
+          <section className="lp-section" id="products">
+            <div className="lp-showcase">
+              {SHOWCASE.map((item, i) => (
+                <FeatureRow key={item.id} item={item} index={i} />
+              ))}
+            </div>
+          </section>
+
+          {/* ---------------- HOW IT WORKS (pipeline) ---------------- */}
+          <section className="lp-section scroll-fade" id="how">
+            <div className="lp-head">
+              <div className="lp-eyebrow">How Pelagos works</div>
+              <h2>Market pricing in, an on-chain position out</h2>
+              <p>Four stages turn a live DeepBook quote into a settled, USDC-collateralized position on Sui — no bridges, no custodians, no manual leg assembly.</p>
+            </div>
+            <div className="lp-flow">
+              {PIPE.map((p, i) => (
+                <React.Fragment key={p.name}>
+                  <div className="flow-stage scroll-fade">
+                    <div className="flow-node"><p.Icon size={22} /></div>
+                    <div className="flow-name"><span className="flow-idx">0{i + 1}</span>{p.name}</div>
+                    <div className="flow-sub">{p.sub}</div>
+                    <p className="flow-desc">{p.desc}</p>
+                  </div>
+                  {i < PIPE.length - 1 && <div className="flow-arrow" aria-hidden><IconArrow /></div>}
+                </React.Fragment>
+              ))}
+            </div>
+          </section>
+
+          {/* ---------------- CLOSING CTA ---------------- */}
+          <section className="lp-section lp-cta scroll-fade">
+            <div className="lp-cta-panel">
+              <div className="lp-cta-inner">
+                <div className="lp-eyebrow">Get started</div>
+                <h2>Structured products, one signature away</h2>
+                <p>Live DeepBook pricing, USDC collateral, settled on Sui. Connect a wallet and trade — no setup, no bridge, no wrapped assets.</p>
+                <div className="lp-actions lp-cta-actions">
+                  <Link className="lp-btn lp-btn-primary" href="/app/portfolio">
+                    Enter app <span className="lp-ar"><IconArrow /></span>
+                  </Link>
+                  <a className="lp-btn lp-btn-ghost" href="#products">Explore the products</a>
+                </div>
+                <div className="lp-cta-trust">
+                  <span>Live DeepBook pricing</span>
+                  <span>USDC collateral</span>
+                  <span>Settled on Sui</span>
+                  <span>Non-custodial</span>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* ---------------- FOOTER ---------------- */}
+          <footer className="lp-footer scroll-fade">
+            <div className="lp-foot-main">
+              <div className="lp-footer-brand">
+                <strong>
+                  <span className="lp-fmark" aria-hidden>
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none">
+                      <path d="M3.5 13.4C5.6 10.9 7.8 9.7 10 9.7c2.6 0 3.7 2.4 6 2.4 1.6 0 2.8-.7 4.5-2.3" stroke={C.tealLight} strokeWidth="2" strokeLinecap="round" />
+                      <path d="M3.5 9.1C5.6 6.6 7.8 5.4 10 5.4c2.6 0 3.7 2.4 6 2.4 1.6 0 2.8-.7 4.5-2.3" stroke={C.teal} strokeWidth="2" strokeLinecap="round" />
+                    </svg>
+                  </span>
+                  PELAGOS
+                </strong>
+                <p>Structured prediction-market products, collateralized in USDC and settled on Sui.</p>
+              </div>
+              <div className="lp-foot-cols">
+                <div className="lp-fcol">
+                  <h5>Products</h5>
+                  {SURFACES.map((s) => (
+                    <Link key={s.id} href={s.href}>{s.title}</Link>
+                  ))}
+                </div>
+                <div className="lp-fcol">
+                  <h5>Resources</h5>
+                  <Link href="/app/portfolio">Portfolio</Link>
+                  <Link href="/app/docs">About &amp; docs</Link>
+                  <a href="https://github.com/tharune/Pelagos-SUI-Overflow" target="_blank" rel="noreferrer">GitHub</a>
+                </div>
+              </div>
+            </div>
+            <div className="lp-footer-base">
+              <span>© 2026 Pelagos · Sui testnet · USDC-collateralized</span>
+              <span>Built for Sui Overflow</span>
+            </div>
+          </footer>
+        </div>
+      </PageFrame>
+    </>
+  );
+}

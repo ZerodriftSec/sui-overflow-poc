@@ -1,0 +1,161 @@
+// Seed: the machine-checkable achievement catalog (always) + staged demo data for the dev
+// wallet user so Stats and history are populated on first open, plus a real DUSDC top-up so
+// the wallet can actually play. Idempotent upserts, never deletes, safe to re-run between
+// demo takes. The play rows are DB history for display only (no fake tx digests); live plays
+// during the demo are real. Run: `bun run prisma/seed.ts`. Values from 08-DEMO-FLOW.md.
+
+import '../dotenv.ts';
+
+import { prismaQuery } from '../src/lib/prisma.ts';
+import { operatorAddress } from '../src/lib/sui/signer.ts';
+import { STARTING_BALANCE, SUI_NETWORK } from '../src/config/main-config.ts';
+import { getDusdcBalance, transferDusdc } from '../src/lib/sui/dusdc.ts';
+import { ACHIEVEMENT_CATALOG } from '../src/services/achievements.ts';
+
+// DUSDC display units -> 6dp base units.
+const D = (n: number): bigint => BigInt(Math.round(n * 1_000_000));
+
+const now = Date.now();
+const hoursAgo = (h: number): Date => new Date(now - h * 3_600_000);
+const daysAgo = (d: number): Date => new Date(now - d * 86_400_000);
+
+// The catalog lives in services/achievements.ts (one source of truth, mirrored by the web catalog);
+// conditions evaluate against UserStats / Play history in achievements.ts.
+const ACHIEVEMENTS = ACHIEVEMENT_CATALOG;
+
+interface SeedPlay {
+  id: string;
+  game: string;
+  status: string;
+  asset: string;
+  side?: string;
+  leverage?: number;
+  strike?: string;
+  lower?: string;
+  upper?: string;
+  widthPct?: number;
+  stake: number;
+  mult: number;
+  pnl: number;
+  dur: number;
+  h: number; // hours ago opened
+}
+
+// ~8 recent plays across both games, mixed outcomes, realistic stakes/multipliers.
+const PLAYS: SeedPlay[] = [
+  { id: 'seed-play-1', game: 'lucky', status: 'won', asset: 'SOL', side: 'up', leverage: 5, strike: '144', stake: 25, mult: 3.5, pnl: 37.5, dur: 30, h: 2 },
+  { id: 'seed-play-2', game: 'range', status: 'cashed_out', asset: 'BTC', lower: '61000', upper: '63000', widthPct: 3.2, stake: 15, mult: 4.0, pnl: 21.0, dur: 60, h: 6 },
+  { id: 'seed-play-3', game: 'range', status: 'lost', asset: 'ETH', lower: '3380', upper: '3420', widthPct: 1.2, stake: 10, mult: 2.0, pnl: -10.0, dur: 30, h: 9 },
+  { id: 'seed-play-4', game: 'lucky', status: 'won', asset: 'BTC', side: 'down', leverage: 10, strike: '62000', stake: 30, mult: 5.0, pnl: 90.0, dur: 60, h: 26 },
+  { id: 'seed-play-5', game: 'lucky', status: 'lost', asset: 'SUI', side: 'up', leverage: 25, strike: '0.95', stake: 5, mult: 25.0, pnl: -5.0, dur: 10, h: 30 },
+  { id: 'seed-play-6', game: 'range', status: 'won', asset: 'ETH', lower: '3300', upper: '3500', widthPct: 5.9, stake: 40, mult: 2.5, pnl: 60.0, dur: 60, h: 50 },
+  { id: 'seed-play-7', game: 'range', status: 'cashed_out', asset: 'SOL', lower: '142', upper: '146', widthPct: 2.8, stake: 12, mult: 3.0, pnl: 14.0, dur: 30, h: 73 },
+  { id: 'seed-play-8', game: 'lucky', status: 'lost', asset: 'BTC', side: 'up', leverage: 2, strike: '61500', stake: 50, mult: 1.8, pnl: -50.0, dur: 60, h: 96 },
+];
+
+async function main(): Promise<void> {
+  // Catalog first, always.
+  for (const a of ACHIEVEMENTS) {
+    await prismaQuery.achievement.upsert({ where: { slug: a.slug }, update: a, create: a });
+  }
+  console.log(`[seed] ${ACHIEVEMENTS.length} achievements upserted`);
+
+  // The dev wallet user. Leave predictManagerId untouched (onboarding creates it). We mint
+  // real chips below, so dusdcFunded only goes true once the wallet actually holds them.
+  const user = await prismaQuery.user.upsert({
+    where: { address: operatorAddress },
+    update: {},
+    create: { address: operatorAddress, provider: 'dev', displayName: 'Lucky Otter' },
+  });
+
+  // Fund the demo wallet for real, idempotently. The bootstrap drains the operator's DUSDC
+  // into the vault, so it boots at ~0; without chips every play fails with INSUFFICIENT_DUSDC.
+  // Top up the shortfall to STARTING_BALANCE (never stacks), then mark funded so /auth/dev
+  // skips its own mint. Chain hiccups warn but never fail the DB seed.
+  try {
+    const have = await getDusdcBalance(operatorAddress);
+    const shortfall = STARTING_BALANCE - have;
+    if (shortfall > 1) {
+      const digest = await transferDusdc(operatorAddress, shortfall);
+      console.log(`[seed] sent ${shortfall.toFixed(2)} DUSDC chips to the dev wallet from treasury (${digest})`);
+    } else {
+      console.log(`[seed] dev wallet already holds ${have.toFixed(2)} DUSDC, no top-up needed`);
+    }
+    await prismaQuery.user.update({ where: { id: user.id }, data: { dusdcFunded: true } });
+  } catch (e) {
+    console.warn('[seed] DUSDC top-up skipped (chain unreachable?):', e instanceof Error ? e.message : e);
+  }
+
+  // The shareable stats card numbers (denormalized).
+  const stats = {
+    gamesPlayed: 23,
+    wins: 14,
+    losses: 9,
+    currentStreak: 3,
+    maxStreak: 6,
+    totalVolume: D(1840),
+    netPnl: D(180),
+    favoriteGame: 'lucky',
+    firstPlayAt: daysAgo(30),
+    lastPlayAt: hoursAgo(2),
+  };
+  await prismaQuery.userStats.upsert({ where: { userId: user.id }, update: stats, create: { userId: user.id, ...stats } });
+
+  // Recent play history. oracleId is display-only here; no fake tx digests (explorer links
+  // only render for real on-chain plays).
+  const oracleId = '0xseed';
+  for (const p of PLAYS) {
+    const openedAt = hoursAgo(p.h);
+    const settledAt = new Date(openedAt.getTime() + p.dur * 1000);
+    const won = p.status === 'won' || p.status === 'cashed_out';
+    await prismaQuery.play.upsert({
+      where: { id: p.id },
+      update: {},
+      create: {
+        id: p.id,
+        userId: user.id,
+        game: p.game,
+        status: p.status,
+        network: SUI_NETWORK, // seeded history matches the running network
+        asset: p.asset,
+        oracleId,
+        marketKey: 'seed',
+        side: p.side ?? null,
+        leverage: p.leverage ?? null,
+        strike: p.strike ?? null,
+        lower: p.lower ?? null,
+        upper: p.upper ?? null,
+        widthPct: p.widthPct ?? null,
+        durationSec: p.dur,
+        expiry: BigInt(settledAt.getTime()),
+        stake: D(p.stake),
+        entryCost: D(p.stake),
+        payout: won ? D(p.stake + p.pnl) : null,
+        pnl: D(p.pnl),
+        multiplier: p.mult,
+        openedAt,
+        settledAt,
+        createdAt: openedAt,
+      },
+    });
+  }
+  console.log(`[seed] ${PLAYS.length} demo plays upserted for ${user.displayName} (${operatorAddress})`);
+
+  // Unlocked achievements so the grid shows progress, not a blank wall.
+  for (const slug of ['first_try', 'first_win', 'mini_streak']) {
+    await prismaQuery.userAchievement.upsert({
+      where: { userId_achievementSlug: { userId: user.id, achievementSlug: slug } },
+      update: {},
+      create: { userId: user.id, achievementSlug: slug },
+    });
+  }
+  console.log('[seed] 3 achievements unlocked for the dev user');
+}
+
+main()
+  .then(() => prismaQuery.$disconnect())
+  .catch(async (e) => {
+    console.error('[seed] failed:', e);
+    await prismaQuery.$disconnect();
+    process.exit(1);
+  });

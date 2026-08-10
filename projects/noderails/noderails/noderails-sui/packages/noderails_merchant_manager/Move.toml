@@ -1,0 +1,9 @@
+[package]
+name = "noderails_merchant_manager"
+edition = "2024.beta"
+
+[dependencies]
+Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "framework/mainnet" }
+
+[addresses]
+noderails_merchant_manager = "0x0"

@@ -1,0 +1,46 @@
+{
+  "name": "suioutkit-backend",
+  "version": "1.0.0",
+  "description": "Express Settle & Index Service for SuiOutKit",
+  "main": "dist/index.js",
+  "engines": {
+    "node": ">=26.3.0"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node --require ./crypto-polyfill.cjs dist/index.js",
+    "dev": "tsc -w & nodemon dist/index.js",
+    "treasury:balance": "node dist/scripts/treasury.js balance",
+    "treasury:wallet": "node dist/scripts/treasury.js wallet",
+    "treasury:deposit": "node dist/scripts/treasury.js deposit",
+    "treasury:withdraw": "node dist/scripts/treasury.js withdraw"
+  },
+  "keywords": [
+    "sui",
+    "fiat",
+    "onramp",
+    "flutterwave",
+    "grpc"
+  ],
+  "author": "SuiOutKit Team",
+  "license": "AGPL-3.0-only-or-later",
+  "dependencies": {
+    "@mysten/payment-kit": "^0.2.8",
+    "@mysten/sui": "^2.22.1",
+    "@mysten/walrus": "^1.2.9",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "ioredis": "^5.11.1",
+    "node-fetch": "^3.3.2",
+    "stripe": "^22.3.2"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.0.1",
+    "nodemon": "^3.1.14",
+    "typescript": "^7.0.2"
+  }
+}

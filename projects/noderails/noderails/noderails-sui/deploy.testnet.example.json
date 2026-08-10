@@ -1,0 +1,22 @@
+{
+  "network": "testnet",
+  "chainId": 202,
+  "rpcUrl": "https://fullnode.testnet.sui.io:443",
+  "gasBudget": 500000000,
+  "preDeploy": {
+    "build": true,
+    "test": true,
+    "publish": true
+  },
+  "escrow": {
+    "initialize": true,
+    "feeRecipient": "0xYOUR_FEE_RECIPIENT_ADDRESS",
+    "superAdmin": "0xYOUR_SUPER_ADMIN_ADDRESS",
+    "transactionAuthorities": ["0xYOUR_MTTX_SIGNER_ADDRESS"],
+    "authorizedNoderailsKeys": ["YOUR_BASE64_ED25519_PUBKEY_32_BYTES"]
+  },
+  "merchantManager": {
+    "initialize": true,
+    "superAdmin": "0xYOUR_SUPER_ADMIN_ADDRESS"
+  }
+}

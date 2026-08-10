@@ -1,0 +1,23 @@
+[package]
+name = "streamline-indexer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "streamline-indexer"
+path = "src/main.rs"
+
+[dependencies]
+streamline-core.workspace = true
+tokio.workspace = true
+axum.workspace = true
+tower-http.workspace = true
+sqlx.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+chrono.workspace = true
+dotenvy.workspace = true

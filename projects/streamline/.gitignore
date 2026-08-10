@@ -1,0 +1,58 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build output
+dist/
+build/
+.vite/
+out/
+
+# Next.js
+.next/
+next-env.d.ts
+*.tsbuildinfo
+.vercel
+.turbo
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Move build artifacts
+contracts/**/build/
+
+# Rust
+target/
+**/*.rs.bk
+Cargo.lock.bak
+
+# Postgres / local data
+*.sqlite
+data/
+
+# Local tool binaries (e.g. pinned sui CLI)
+.tools/
+
+# Excalidraw diagrams (local working files)
+*.excalidraw

@@ -1,0 +1,30 @@
+api.noderails.com {
+	reverse_proxy localhost:3000 {
+		# Health check for upstream
+		health_uri /health
+		health_interval 30s
+		health_timeout 5s
+
+		# Headers
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+	}
+
+	# Security headers
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+
+	# Gzip
+	encode gzip
+
+	# Access log
+	log {
+		output stdout
+		format json
+	}
+}
